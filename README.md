@@ -172,9 +172,7 @@ All dependencies audited before inclusion. No version ranges permitted.
 
 ## Known Limitations
 
-1. Android OOM intermittent on EPOCH range load (testnet high alert density)
-2. Flutter Linux embedder warnings on window close (cosmetic, non-blocking)
-3. Async provider testing timing issues (production behavior verified)
+* Flutter Linux embedder warnings on window close (cosmetic, non-blocking)
 
 ---
 
