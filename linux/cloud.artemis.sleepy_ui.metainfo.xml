@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>cloud.artemis.sleepy_ui</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>SLEEPY UI</name>
+  <summary>Solana validator real-time monitoring</summary>
+  
+  <description>
+    <p>
+      SLEEPY UI provides real-time monitoring for Solana validators with sub-3-second 
+      incident response capabilities. Track validator performance, detect anomalies, 
+      and maintain optimal validator health.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Real-time performance metrics visualization</li>
+      <li>Credits loss detection with sub-3-second response</li>
+      <li>Vote and root distance monitoring</li>
+      <li>Fork detection and recovery tracking</li>
+      <li>Epoch progress and validator status</li>
+    </ul>
+  </description>
+  
+  <launchable type="desktop-id">cloud.artemis.sleepy_ui.desktop</launchable>
+  
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main monitoring dashboard</caption>
+    </screenshot>
+  </screenshots>
+  
+  <url type="homepage">https://art3mis.cloud</url>
+  <url type="bugtracker">https://github.com/a3mc/sleepy_ui/issues</url>
+  <url type="help">https://github.com/a3mc/sleepy_ui</url>
+  
+  <developer_name>Matsuro Hadouken</developer_name>
+  <developer id="cloud.artemis">
+    <name>ART3MIS.CLOUD</name>
+  </developer>
+  
+  <provides>
+    <binary>sleepy-ui</binary>
+  </provides>
+  
+  <releases>
+    <release version="1.0.0" date="2025-12-29">
+      <description>
+        <p>Initial release</p>
+        <ul>
+          <li>Real-time validator monitoring</li>
+          <li>Credits loss detection</li>
+          <li>Mobile and desktop support</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
+  
+  <categories>
+    <category>Network</category>
+    <category>Monitor</category>
+    <category>Utility</category>
+  </categories>
+  
+  <keywords>
+    <keyword>solana</keyword>
+    <keyword>validator</keyword>
+    <keyword>monitoring</keyword>
+    <keyword>blockchain</keyword>
+    <keyword>crypto</keyword>
+  </keywords>
+  
+  <update_contact>team@art3mis.cloud</update_contact>
+</component>

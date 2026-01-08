@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=SLEEPY UI
+Comment=Solana validator real-time monitoring with sub-3-second incident response
+Exec=sleepy-ui
+Icon=cloud.artemis.sleepy_ui
+Terminal=false
+Type=Application
+Categories=Network;Monitor;Utility;
+Keywords=solana;validator;monitoring;blockchain;
+StartupNotify=true
+StartupWMClass=sleepy-ui
+
+# Metadata
+X-GNOME-UsesNotifications=true
+X-AppImage-Version=1.0.0

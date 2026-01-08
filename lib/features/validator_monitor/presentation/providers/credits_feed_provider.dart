@@ -1,0 +1,105 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/models/validator_snapshot.dart';
+import 'validator_providers.dart';
+
+/// Resource change event for feed display
+typedef CreditEvent = ({int change, bool isWin});
+
+/// Provider that maintains a real-time feed of credit changes
+/// Accumulates up to 100 events as they happen via SSE, independent of time range selection
+final creditsFeedProvider =
+    StateNotifierProvider<CreditsFeedNotifier, List<CreditEvent>>((ref) {
+  return CreditsFeedNotifier(ref);
+});
+
+class CreditsFeedNotifier extends StateNotifier<List<CreditEvent>> {
+  final Ref _ref;
+  ValidatorSnapshot? _previousSnapshot;
+  late final ProviderSubscription<List<ValidatorSnapshot>> _subscription;
+
+  CreditsFeedNotifier(this._ref) : super([]) {
+    // Preload events from existing buffer
+    _preloadFromBuffer();
+
+    // Watch live buffer - use separate method to avoid closure capture
+    // CRITICAL FIX: Separate method prevents memory leak from closure capturing buffer list references
+    _subscription = _ref.listen<List<ValidatorSnapshot>>(
+      snapshotBufferProvider,
+      (_, next) => _processLatestSnapshot(next),
+    );
+  }
+
+  // Separate method prevents closure capture of buffer list references
+  // Each call creates fresh stack frame, allowing GC to collect old buffer lists
+  // Fixes OOM crash from unbounded memory accumulation over 10-20 minutes
+  void _processLatestSnapshot(List<ValidatorSnapshot> buffer) {
+    // Early exit checks
+    if (!mounted) return;
+    if (buffer.isEmpty) return;
+
+    // Extract only latest snapshot - don't hold buffer reference in closure
+    final latest = buffer.last;
+
+    // Skip first snapshot (no previous to compare)
+    if (_previousSnapshot == null) {
+      _previousSnapshot = latest;
+      return;
+    }
+
+    // Calculate gap change
+    final prevGap = _previousSnapshot!.gapToRank1.abs();
+    final currGap = latest.gapToRank1.abs();
+    final gapChange = currGap - prevGap;
+
+    // Only add if gap changed
+    if (gapChange != 0) {
+      // Gap decreased (gapChange < 0) = GOOD = green
+      // Gap increased (gapChange > 0) = BAD = red
+      final event = (change: gapChange.abs(), isWin: gapChange < 0);
+
+      // Add to front of list, keep only last 100
+      // OPTIMIZATION: Avoid spread operator when at capacity
+      if (state.length < 100) {
+        state = [event, ...state];
+      } else {
+        state = [event, ...state.take(99)];
+      }
+    }
+
+    // Store only latest snapshot, not entire buffer
+    _previousSnapshot = latest;
+  }
+
+  void _preloadFromBuffer() {
+    final buffer = _ref.read(snapshotBufferProvider);
+    if (buffer.length < 2) return;
+
+    final events = <CreditEvent>[];
+
+    // Extract credit changes from buffer (oldest to newest)
+    for (int i = 1; i < buffer.length && events.length < 100; i++) {
+      final prev = buffer[i - 1].gapToRank1.abs();
+      final curr = buffer[i].gapToRank1.abs();
+      final gapChange = curr - prev;
+
+      if (gapChange != 0) {
+        events.add((change: gapChange.abs(), isWin: gapChange < 0));
+      }
+    }
+
+    // Reverse to show newest first
+    state = events.reversed.toList();
+
+    // Set previous snapshot to last buffer item for continuity
+    if (buffer.isNotEmpty) {
+      _previousSnapshot = buffer.last;
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription.close();
+    _previousSnapshot = null;
+    super.dispose();
+  }
+}

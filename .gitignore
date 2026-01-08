@@ -1,0 +1,58 @@
+# Dart & Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.buildlog
+.melos_tool/
+
+# Flutter build outputs
+build/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+*.lock
+*.log
+.flutter-plugins-dependencies
+
+# IDE settings
+.idea/
+*.iml
+
+# Android
+android/.gradle/
+android/app/key.properties
+android/local.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Runner.xcworkspace/
+
+# Linux & Desktop
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Web
+web/generated_plugin_registrant.dart
+
+# Generated plugin registrants
+**/generated_plugin_registrant.dart
+
+# Environment/Secrets
+.env
+.env.*
+*.keystore
+*.jks
+*.pem
+*.key
+
+# Test & Coverage
+coverage/
+test_output/
+
+# Others
+.DS_Store
+*.swp
+*.swo
+*.tmp

@@ -1,0 +1,389 @@
+name: Release Build
+
+on:
+  # Automated release on version tags
+  push:
+    tags:
+      - 'v*.*.*'
+  
+  # Manual trigger - version extracted from pubspec.yaml
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.38.5'
+
+jobs:
+  # Validate code quality before building platform artifacts
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      flutter_version: ${{ steps.flutter_version.outputs.version }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Capture Flutter version
+        id: flutter_version
+        run: |
+          FLUTTER_VER=$(flutter --version | head -1 | sed 's/Flutter //')
+          echo "version=${FLUTTER_VER}" >> $GITHUB_OUTPUT
+          echo "Detected Flutter version: ${FLUTTER_VER}"
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Generate code with build_runner
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+      
+      - name: Analyze code
+        run: flutter analyze --fatal-infos
+      
+      - name: Run tests with coverage
+        run: flutter test --coverage
+
+  # Android APK build
+  build-android:
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${VERSION}"
+      
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Build Android APK (release)
+        run: flutter build apk --release
+      
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             sleepy_ui-${VERSION}-android.apk
+      
+      - name: Verify artifact exists
+        run: |
+          if [ ! -f sleepy_ui-*.apk ]; then
+            echo "Error: Android APK artifact not found"
+            ls -la
+            exit 1
+          fi
+      
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: sleepy_ui-*.apk
+          retention-days: 7
+
+  # Linux x64 build
+  build-linux:
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${VERSION}"
+      
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libsecret-1-dev
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Build Linux release
+        run: flutter build linux --release
+      
+      - name: Package Linux bundle
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd build/linux/x64/release
+          tar -czf ../../../../sleepy_ui-${VERSION}-linux-x64.tar.gz bundle/
+      
+      - name: Create AppImage
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Download appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/applications
+          
+          # Copy bundle contents
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
+          
+          # Create desktop file
+          cat > AppDir/usr/share/applications/sleepy_ui.desktop << 'EOF'
+          [Desktop Entry]
+          Name=SLEEPY UI
+          Exec=sleepy_ui
+          Icon=sleepy_ui
+          Type=Application
+          Categories=Utility;
+          EOF
+          
+          # Copy icon
+          cp linux/icons/hicolor/256x256/apps/cloud.artemis.sleepy_ui.png AppDir/usr/share/icons/hicolor/256x256/apps/sleepy_ui.png
+          
+          # Create AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          APPDIR="$(dirname "$(readlink -f "$0")")"
+          export LD_LIBRARY_PATH="${APPDIR}/usr/bin/lib:${LD_LIBRARY_PATH}"
+          exec "${APPDIR}/usr/bin/sleepy_ui" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          
+          # Symlink desktop file and icon for AppImage root
+          ln -s usr/share/applications/sleepy_ui.desktop AppDir/
+          ln -s usr/share/icons/hicolor/256x256/apps/sleepy_ui.png AppDir/
+          
+          # Build AppImage (without FUSE in CI environment)
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run AppDir sleepy_ui-${VERSION}-x86_64.AppImage
+      
+      - name: Verify artifact exists
+        run: |
+          if [ ! -f sleepy_ui-*-linux-x64.tar.gz ]; then
+            echo "Error: Linux tarball not found"
+            ls -la
+            exit 1
+          fi
+          if [ ! -f sleepy_ui-*-x86_64.AppImage ]; then
+            echo "Error: Linux AppImage not found"
+            ls -la
+            exit 1
+          fi
+      
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: |
+            sleepy_ui-*-linux-x64.tar.gz
+            sleepy_ui-*-x86_64.AppImage
+          retention-days: 7
+
+  # Windows x64 build
+  build-windows:
+    needs: [test]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version from pubspec.yaml
+        id: version
+        shell: pwsh
+        run: |
+          $VERSION = (Select-String -Path "pubspec.yaml" -Pattern "^version:").Line.Split(' ')[1].Split('+')[0]
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          Write-Host "Extracted version: $VERSION"
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Build Windows release
+        run: flutter build windows --release
+      
+      - name: Package Windows bundle
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" `
+                           -DestinationPath "sleepy_ui-$VERSION-windows-x64.zip" `
+                           -CompressionLevel Optimal
+      
+      - name: Verify artifact exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "sleepy_ui-*-windows-x64.zip")) {
+            Write-Error "Error: Windows zip archive not found"
+            Get-ChildItem
+            exit 1
+          }
+      
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: sleepy_ui-*-windows-x64.zip
+          retention-days: 7
+
+  # Create GitHub Release
+  create-release:
+    needs: [test, build-android, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Validate artifacts
+        run: |
+          echo "Checking for required artifacts..."
+          test -f artifacts/android-apk/*.apk || { echo "Error: Android APK missing"; exit 1; }
+          test -f artifacts/linux-x64/*.tar.gz || { echo "Error: Linux tarball missing"; exit 1; }
+          test -f artifacts/linux-x64/*.AppImage || { echo "Error: Linux AppImage missing"; exit 1; }
+          test -f artifacts/windows-x64/*.zip || { echo "Error: Windows zip missing"; exit 1; }
+          echo "All artifacts validated successfully"
+      
+      - name: Display artifact structure
+        run: ls -R artifacts/
+      
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION=$(grep "^version:" pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # For tag pushes, get commits since previous tag
+            PREV_TAG=$(git describe --abbrev=0 --tags HEAD^ 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ]; then
+              CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+            else
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
+            fi
+          else
+            # For manual triggers, get recent commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
+          fi
+          
+          # Escape for GitHub output
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo "content=${CHANGELOG}" >> $GITHUB_OUTPUT
+      
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## SLEEPY UI ${{ steps.version.outputs.version }}
+            
+            Real-time Solana validator monitoring with sub-3-second incident response.
+            
+            ### Downloads
+            
+            - **Android**: `sleepy_ui-${{ steps.version.outputs.version }}-android.apk`
+              - Install: Enable "Install from unknown sources" in Android settings
+              - Minimum SDK: Check pubspec.yaml for current requirement
+            
+            - **Linux**: `sleepy_ui-${{ steps.version.outputs.version }}-linux-x64.tar.gz`
+              - Extract: `tar -xzf sleepy_ui-${{ steps.version.outputs.version }}-linux-x64.tar.gz`
+              - Run: `./bundle/sleepy_ui`
+            
+            - **Linux (AppImage)**: `sleepy_ui-${{ steps.version.outputs.version }}-x86_64.AppImage`
+              - Make executable: `chmod +x sleepy_ui-${{ steps.version.outputs.version }}-x86_64.AppImage`
+              - Run: `./sleepy_ui-${{ steps.version.outputs.version }}-x86_64.AppImage`
+            
+            - **Windows**: `sleepy_ui-${{ steps.version.outputs.version }}-windows-x64.zip`
+              - Extract and run `sleepy_ui.exe`
+            
+            ### Changes
+            
+            ${{ steps.changelog.outputs.content }}
+            
+            ### Platform Support
+            
+            - Android (ARMv7, ARM64, x86_64)
+            - Linux x64
+            - Windows x64
+            
+            ---
+            
+            Built with Flutter ${{ needs.test.outputs.flutter_version }}
+          files: |
+            artifacts/android-apk/*.apk
+            artifacts/linux-x64/*.tar.gz
+            artifacts/linux-x64/*.AppImage
+            artifacts/windows-x64/*.zip
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
