@@ -135,10 +135,12 @@ class _CreditsMonitoringPanelV2State
         animation: Listenable.merge(
             [_pulseAnimation, _scanlineAnimation, _glitchController]),
         builder: (context, child) {
-          return Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: Stack(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
                   color: Colors.black,
                   borderRadius: BorderRadius.circular(2),
                   border: Border.all(
@@ -255,6 +257,7 @@ class _CreditsMonitoringPanelV2State
                 ),
               ),
             ],
+            ),
           );
         },
       ),

@@ -240,6 +240,17 @@ class NetworkGapsChart extends ConsumerWidget {
       return _buildEmptyState();
     }
 
+    // Determine line color based on current rank
+    final currentRank = dataPoints.last.rank;
+    Color lineColor;
+    if (currentRank <= 100) {
+      lineColor = AppTheme.rankTop100Color; // Green
+    } else if (currentRank <= 200) {
+      lineColor = AppTheme.rankTop200Color; // Dark blue
+    } else {
+      lineColor = AppTheme.rankOutsideColor; // Gray
+    }
+
     final rank1Spots = <FlSpot>[];
     final baseTimestamp =
         dataPoints.first.timestamp.millisecondsSinceEpoch / 1000;
@@ -262,16 +273,16 @@ class NetworkGapsChart extends ConsumerWidget {
     final minGap = allGaps.reduce((a, b) => a < b ? a : b).toDouble();
     final maxGap = allGaps.reduce((a, b) => a > b ? a : b).toDouble();
 
+    // For integer gap data, round bounds to integers for clean gridlines
     final dataRange = maxGap - minGap;
-    final paddingFactor = 0.12;
-    final verticalPadding = dataRange > 0 ? dataRange * paddingFactor : 15.0;
+    final verticalPadding = dataRange <= 2 ? 1.0 : (dataRange * 0.15);
 
-    final yMin = (minGap - verticalPadding).clamp(0.0, double.infinity);
-    final yMax = maxGap + verticalPadding;
+    final yMin = ((minGap - verticalPadding).clamp(0.0, double.infinity)).floorToDouble();
+    final yMax = (maxGap + verticalPadding).ceilToDouble();
 
-    // Dynamic grid intervals based on range
+    // Dynamic grid intervals based on range (minimum 1.0 for integer data)
     final range = yMax - yMin;
-    final gridInterval = _calculateGridInterval(range);
+    final gridInterval = (_calculateGridInterval(range)).clamp(1.0, double.infinity);
     // Adaptive label spacing: fewer labels for small ranges, more for large ranges
     final labelInterval = range < 100 ? gridInterval * 2 : gridInterval * 3;
 
@@ -389,28 +400,47 @@ class NetworkGapsChart extends ConsumerWidget {
                 lineBarsData: [
                   LineChartBarData(
                     spots: rank1Spots,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    preventCurveOverShooting: true,
-                    color: AppTheme.ourValidatorColor,
+                    isCurved: false,
+                    color: lineColor,
                     barWidth: 1.2,
                     isStrokeCapRound: true,
                     dotData: FlDotData(
-                      show: selectedRange == ChartTimeRange.cypherblade,
+                      show: true,
                       getDotPainter: (spot, percent, barData, index) {
-                        if (spot.y == 0) {
+                        // Highlight the last point (current moment) with a larger, pulsing dot
+                        final isLastPoint = index == rank1Spots.length - 1;
+                        
+                        if (isLastPoint) {
                           return FlDotCirclePainter(
-                            radius: 2.5,
-                            color: AppTheme.goldColor,
-                            strokeWidth: 1.2,
-                            strokeColor:
-                                AppTheme.goldColor.withValues(alpha: 0.5),
+                            radius: 4.5,
+                            color: AppTheme.ourValidatorColor,
+                            strokeWidth: 2.0,
+                            strokeColor: Colors.white.withValues(alpha: 0.9),
                           );
                         }
+                        
+                        // Show dots for all points in cypherblade mode
+                        if (selectedRange == ChartTimeRange.cypherblade) {
+                          if (spot.y == 0) {
+                            return FlDotCirclePainter(
+                              radius: 2.5,
+                              color: AppTheme.goldColor,
+                              strokeWidth: 1.2,
+                              strokeColor:
+                                  AppTheme.goldColor.withValues(alpha: 0.5),
+                            );
+                          }
+                          return FlDotCirclePainter(
+                            radius: 1.5,
+                            color: lineColor,
+                            strokeWidth: 0,
+                          );
+                        }
+                        
+                        // Hide intermediate dots in historical views (cleaner line view)
                         return FlDotCirclePainter(
-                          radius: 1.5,
-                          color: AppTheme.ourValidatorColor,
-                          strokeWidth: 0,
+                          radius: 0,
+                          color: Colors.transparent,
                         );
                       },
                     ),
@@ -444,7 +474,7 @@ class NetworkGapsChart extends ConsumerWidget {
                               radius: 4,
                               color: Colors.white,
                               strokeWidth: 1,
-                              strokeColor: AppTheme.ourValidatorColor,
+                              strokeColor: lineColor,
                             );
                           },
                         ),

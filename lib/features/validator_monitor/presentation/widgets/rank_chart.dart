@@ -155,16 +155,17 @@ class RankChart extends ConsumerWidget {
     final minRank = allRanks.reduce((a, b) => a < b ? a : b);
     final maxRank = allRanks.reduce((a, b) => a > b ? a : b);
 
-    final rawPadding = (maxRank - minRank) * 0.3;
-    final padding = rawPadding < 2.0 ? 2.0 : rawPadding;
-    final yMin = (minRank - padding).clamp(1.0, double.infinity);
-    final yMax = maxRank + padding;
+    // For integer rank data, round bounds to integers for clean gridlines
+    final actualRange = maxRank - minRank;
+    final padding = actualRange <= 2 ? 1.0 : (actualRange * 0.15);
+    final yMin = ((minRank - padding).clamp(1.0, double.infinity)).floorToDouble();
+    final yMax = (maxRank + padding).ceilToDouble();
 
     final range = yMax - yMin;
     double interval;
-    if (range <= 10) {
-      interval = 2.0;
-    } else if (range <= 20) {
+    if (range <= 5) {
+      interval = 1.0;    } else if (range <= 10) {
+      interval = 2.0;    } else if (range <= 20) {
       interval = 5.0;
     } else if (range <= 50) {
       interval = 10.0;
@@ -182,25 +183,45 @@ class RankChart extends ConsumerWidget {
       child: RepaintBoundary(
         child: LineChart(
           LineChartData(
+            clipData: const FlClipData.all(),
             minY: yMin,
             maxY: yMax,
             lineBarsData: [
               LineChartBarData(
                 spots: rankSpots,
-                isCurved: true,
-                curveSmoothness: 0.25,
-                preventCurveOverShooting: true,
+                isCurved: false,
                 isStrokeCapRound: true,
                 isStrokeJoinRound: true,
                 color: _getRankColor(rankSpots.last.y.toInt()),
                 barWidth: 1.2,
                 dotData: FlDotData(
-                  show: selectedRange == ChartTimeRange.cypherblade,
+                  show: true,
                   getDotPainter: (spot, percent, barData, index) {
+                    // Highlight the last point (current moment) with a larger, pulsing dot
+                    final isLastPoint = index == rankSpots.length - 1;
+                    
+                    if (isLastPoint) {
+                      return FlDotCirclePainter(
+                        radius: 4.5,
+                        color: _getRankColor(spot.y.toInt()),
+                        strokeWidth: 2.0,
+                        strokeColor: Colors.white.withValues(alpha: 0.9),
+                      );
+                    }
+                    
+                    // Show dots for all points in cypherblade mode
+                    if (selectedRange == ChartTimeRange.cypherblade) {
+                      return FlDotCirclePainter(
+                        radius: 1.5,
+                        color: _getRankColor(spot.y.toInt()),
+                        strokeWidth: 0,
+                      );
+                    }
+                    
+                    // Hide intermediate dots in historical views
                     return FlDotCirclePainter(
-                      radius: 1.5,
-                      color: _getRankColor(spot.y.toInt()),
-                      strokeWidth: 0,
+                      radius: 0,
+                      color: Colors.transparent,
                     );
                   },
                 ),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/themes/app_theme.dart';
@@ -29,6 +30,8 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  double _rotationAngle = 0.0;
+  DateTime? _lastSnapshotTime;
 
   @override
   void initState() {
@@ -52,6 +55,17 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
 
     if (widget.snapshots.length != oldWidget.snapshots.length) {
       _controller.forward(from: 0.7);
+    }
+    
+    // Check if we have a new snapshot by comparing timestamps
+    if (widget.snapshots.isNotEmpty) {
+      final currentTime = widget.snapshots.last.timestamp;
+      if (_lastSnapshotTime != currentTime) {
+        setState(() {
+          _rotationAngle += math.pi / 30; // Rotate 6 degrees per new snapshot
+          _lastSnapshotTime = currentTime;
+        });
+      }
     }
   }
 
@@ -101,30 +115,70 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           return Semantics(
             label: _buildSemanticDescription(),
             readOnly: true,
-            child: RepaintBoundary(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CustomPaint(
-                    size: size,
-                    painter: CircularBladePainter(
-                      snapshots: widget.snapshots,
-                      animation: _animation,
-                      rank: widget.rank,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                RepaintBoundary(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: size,
+                        painter: CircularBladePainter(
+                          snapshots: widget.snapshots,
+                          animation: _animation,
+                          rank: widget.rank,
+                        ),
+                      ),
+                      CustomPaint(
+                        size: size,
+                        painter: EventMarkerPainter(
+                          snapshots: widget.snapshots,
+                          innerRadius: eventMarkerStartRadius,
+                          ringSpacing: ringSpacing,
+                          ringThickness: ringThickness,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Rotating moon with circular frame - perfect circle mask
+                Transform.rotate(
+                  angle: _rotationAngle,
+                  child: Container(
+                    width: radius * 0.4,
+                    height: radius * 0.4,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        width: 2.0,
+                      ),
+                    ),
+                    child: ClipOval(
+                      child: Transform.scale(
+                        scale: 1.1, // Stretch slightly to ensure full coverage
+                        child: ImageFiltered(
+                          imageFilter: ui.ImageFilter.blur(
+                            sigmaX: 0.5,
+                            sigmaY: 0.5,
+                            tileMode: TileMode.decal,
+                          ),
+                          child: Opacity(
+                            opacity: 0.5,
+                            child: Image.asset(
+                              'assets/moon.png',
+                              fit: BoxFit.cover,
+                              colorBlendMode: BlendMode.softLight,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  CustomPaint(
-                    size: size,
-                    painter: EventMarkerPainter(
-                      snapshots: widget.snapshots,
-                      innerRadius: eventMarkerStartRadius,
-                      ringSpacing: ringSpacing,
-                      ringThickness: ringThickness,
-                    ),
-                  ),
-                  _buildCenterInfo(context, radius),
-                ],
-              ),
+                ),
+                _buildCenterInfo(context, radius),
+              ],
             ),
           );
         },
@@ -169,13 +223,19 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     final statusFontSize = (radius * 0.04).clamp(6.0, 12.0); // 4% of radius
     final verticalSpacing = (radius * 0.025).clamp(3.0, 8.0); // 2.5% of radius
 
-    // Determine text color based on rank (black for gray background when rank > 200)
+    // Determine text color based on rank tier
     Color rankTextColor = Colors.white;
     if (widget.rank != null) {
       final cleanRank = widget.rank!.replaceAll(RegExp(r'[^\d]'), '');
       final rankNum = int.tryParse(cleanRank);
-      if (rankNum != null && rankNum > 200) {
-        rankTextColor = Colors.black;
+      if (rankNum != null) {
+        if (rankNum <= 100) {
+          rankTextColor = AppTheme.rankTop100Color; // Green
+        } else if (rankNum <= 200) {
+          rankTextColor = AppTheme.rankTop200Color; // Dark blue
+        } else {
+          rankTextColor = AppTheme.rankOutsideColor; // Gray
+        }
       }
     }
 
