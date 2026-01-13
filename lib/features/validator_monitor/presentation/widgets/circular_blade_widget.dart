@@ -7,7 +7,6 @@ import '../../../../core/themes/app_theme.dart';
 import '../../data/models/validator_snapshot.dart';
 import 'circular_blade_painter.dart';
 import 'event_marker_painter.dart';
-import 'plasma_globe_widget.dart';
 
 class CircularBladeWidget extends StatefulWidget {
   final List<ValidatorSnapshot> snapshots;
@@ -31,7 +30,6 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  double _rotationAngle = 0.0;
   DateTime? _lastSnapshotTime;
   double _secondsSinceUpdate = 0.0; // Changed to double for ms precision
   Timer? _updateTimer;
@@ -74,7 +72,6 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
       final currentTime = widget.snapshots.last.timestamp;
       if (_lastSnapshotTime != currentTime) {
         setState(() {
-          _rotationAngle += math.pi / 30; // Rotate 6 degrees per new snapshot
           _lastSnapshotTime = currentTime;
           _secondsSinceUpdate = 0; // Reset counter
         });

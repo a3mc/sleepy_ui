@@ -413,7 +413,7 @@ class NetworkGapsChart extends ConsumerWidget {
                         if (isLastPoint) {
                           return FlDotCirclePainter(
                             radius: 4.5,
-                            color: AppTheme.ourValidatorColor,
+                            color: lineColor,
                             strokeWidth: 2.0,
                             strokeColor: Colors.white.withValues(alpha: 0.9),
                           );
@@ -983,7 +983,7 @@ class NetworkGapsChart extends ConsumerWidget {
                 fontWeight: FontWeight.bold,
                 backgroundColor: AppTheme.backgroundDarker,
               ),
-              labelResolver: (line) => 'CYCLE',
+              labelResolver: (line) => 'EPOCH',
             ),
           ),
         );
