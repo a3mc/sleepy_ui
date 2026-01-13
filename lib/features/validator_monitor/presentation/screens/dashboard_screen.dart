@@ -151,9 +151,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     // Wait for initial data before rendering UI
-    final hasInitialData = snapshotBuffer.isNotEmpty &&
-        (statusAsync.hasValue || snapshotBuffer.length > 3) &&
-        (healthAsync.hasValue || snapshotBuffer.length > 3);
+    // Cypherblade with 2+ snapshots is sufficient - indicates working SSE connection
+    // Status/health endpoints can load in background (displayed when ready)
+    final hasInitialData = snapshotBuffer.length >= 2;
 
     if (!hasInitialData) {
       // Check for authentication errors even before initial data loads

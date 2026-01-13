@@ -40,42 +40,55 @@ class NetworkGapsChart extends ConsumerWidget {
       return _buildEmptyState();
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundDarker,
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(
-          color: AppTheme.borderColor,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(data, compactMode),
-          const Divider(height: 1, color: AppTheme.borderColor),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final showCreditsFeed =
-                      ref.watch(creditsFeedVisibilityProvider);
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildChartContent(
-                            data, selectedRange, ref, compactMode),
-                      ),
-                      if (showCreditsFeed) const SizedBox(width: 12),
-                      if (showCreditsFeed) _buildCreditsFlow(ref),
-                    ],
-                  );
-                },
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Adapt padding for extreme layouts
+        final availableHeight = constraints.maxHeight;
+        final padding = availableHeight < 80 ? 4.0 : 12.0;
+
+        return Container(
+          constraints: const BoxConstraints(minHeight: 120),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundDarker,
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(
+              color: AppTheme.borderColor,
+              width: 1,
             ),
           ),
-        ],
-      ),
+          child: ClipRect(
+            child: Column(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                if (availableHeight >= 80) _buildHeader(data, compactMode),
+                if (availableHeight >= 80)
+                  const Divider(height: 1, color: AppTheme.borderColor),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Consumer(
+                      builder: (context, ref, _) {
+                        final showCreditsFeed =
+                            ref.watch(creditsFeedVisibilityProvider);
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: _buildChartContent(
+                                  data, selectedRange, ref, compactMode),
+                            ),
+                            if (showCreditsFeed) const SizedBox(width: 12),
+                            if (showCreditsFeed) _buildCreditsFlow(ref),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -273,18 +286,25 @@ class NetworkGapsChart extends ConsumerWidget {
     final minGap = allGaps.reduce((a, b) => a < b ? a : b).toDouble();
     final maxGap = allGaps.reduce((a, b) => a > b ? a : b).toDouble();
 
-    // For integer gap data, round bounds to integers for clean gridlines
+    // Grafana-style proportional padding: 10% of data range (Mode 3)
+    final delta = maxGap - minGap;
+
+    // Handle flat data (all values identical)
+    final effectiveDelta =
+        delta == 0 ? (minGap == 0 ? 1.0 : minGap * 0.1) : delta;
+
+    // Apply 10% proportional padding to delta
+    final yMin = ((minGap - effectiveDelta * 0.1).clamp(0.0, double.infinity))
+        .floorToDouble();
+    final yMax = (maxGap + effectiveDelta * 0.1).ceilToDouble();
+
+    // Calculate intervals based on actual data range, not padded range
     final dataRange = maxGap - minGap;
-    final verticalPadding = dataRange <= 2 ? 1.0 : (dataRange * 0.15);
-
-    final yMin = ((minGap - verticalPadding).clamp(0.0, double.infinity)).floorToDouble();
-    final yMax = (maxGap + verticalPadding).ceilToDouble();
-
-    // Dynamic grid intervals based on range (minimum 1.0 for integer data)
-    final range = yMax - yMin;
-    final gridInterval = (_calculateGridInterval(range)).clamp(1.0, double.infinity);
+    final gridInterval =
+        (_calculateGridInterval(dataRange > 0 ? dataRange : effectiveDelta))
+            .clamp(1.0, double.infinity);
     // Adaptive label spacing: fewer labels for small ranges, more for large ranges
-    final labelInterval = range < 100 ? gridInterval * 2 : gridInterval * 3;
+    final labelInterval = dataRange < 100 ? gridInterval * 2 : gridInterval * 3;
 
     return Semantics(
       label: _buildChartSemanticDescription(dataPoints),
@@ -409,7 +429,7 @@ class NetworkGapsChart extends ConsumerWidget {
                       getDotPainter: (spot, percent, barData, index) {
                         // Highlight the last point (current moment) with a larger, pulsing dot
                         final isLastPoint = index == rank1Spots.length - 1;
-                        
+
                         if (isLastPoint) {
                           return FlDotCirclePainter(
                             radius: 4.5,
@@ -418,7 +438,7 @@ class NetworkGapsChart extends ConsumerWidget {
                             strokeColor: Colors.white.withValues(alpha: 0.9),
                           );
                         }
-                        
+
                         // Show dots for all points in cypherblade mode
                         if (selectedRange == ChartTimeRange.cypherblade) {
                           if (spot.y == 0) {
@@ -436,7 +456,7 @@ class NetworkGapsChart extends ConsumerWidget {
                             strokeWidth: 0,
                           );
                         }
-                        
+
                         // Hide intermediate dots in historical views (cleaner line view)
                         return FlDotCirclePainter(
                           radius: 0,
@@ -915,8 +935,12 @@ class NetworkGapsChart extends ConsumerWidget {
 
       final currentForkEventId = events.fork.lastAlert?.eventId;
       final prevForkEventId = prevEvents?.fork.lastAlert?.eventId;
-      final forkTransition =
-          currentForkEventId != null && currentForkEventId != prevForkEventId;
+
+      // Real transition: event ID changes from one value to a DIFFERENT value
+      // Not a transition: null → something (happens when viewing new time range with old lastAlert)
+      final forkTransition = currentForkEventId != null &&
+          prevForkEventId != null &&
+          currentForkEventId != prevForkEventId;
 
       final criticalRecovery = prevEvents != null &&
           prevEvents.temporal.isCritical &&

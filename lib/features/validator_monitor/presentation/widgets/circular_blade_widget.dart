@@ -48,12 +48,14 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     );
 
     _controller.forward();
-    
+
     // Update timer every 50ms for smooth millisecond precision
     _updateTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_lastSnapshotTime != null) {
         setState(() {
-          _secondsSinceUpdate = DateTime.now().difference(_lastSnapshotTime!).inMilliseconds / 1000.0;
+          _secondsSinceUpdate =
+              DateTime.now().difference(_lastSnapshotTime!).inMilliseconds /
+                  1000.0;
         });
       }
     });
@@ -66,7 +68,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     if (widget.snapshots.length != oldWidget.snapshots.length) {
       _controller.forward(from: 0.7);
     }
-    
+
     // Check if we have a new snapshot by comparing timestamps
     if (widget.snapshots.isNotEmpty) {
       final currentTime = widget.snapshots.last.timestamp;
@@ -236,7 +238,8 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
                   foreground: Paint()
                     ..style = PaintingStyle.stroke
                     ..strokeWidth = 3.0
-                    ..color = AppTheme.backgroundDarker, // Use app's dark background color
+                    ..color = AppTheme
+                        .backgroundDarker, // Use app's dark background color
                 ),
               ),
               // Fill layer (color-coded rank)
@@ -346,10 +349,10 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
 
   Widget _buildTimerWidget() {
     final theme = Theme.of(context);
-    
+
     // Format: "0.0s" with 1 decimal precision
     final timeText = _secondsSinceUpdate.toStringAsFixed(1);
-    
+
     // Color based on freshness: green < 3s, blue < 5s, red >= 5s
     Color timeColor;
     if (_secondsSinceUpdate < 3.0) {
@@ -359,7 +362,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     } else {
       timeColor = AppTheme.ringCriticalColor; // Red - stale
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(

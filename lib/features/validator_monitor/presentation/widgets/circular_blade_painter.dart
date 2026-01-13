@@ -69,7 +69,7 @@ class CircularBladePainter extends CustomPainter {
 
     // Draw decorative inner circle with subtle styling
     final centerRadius = ring1Inner - ringGap;
-    
+
     // Outer decorative ring with gradient
     final outerRingPaint = Paint()
       ..shader = RadialGradient(
@@ -80,7 +80,7 @@ class CircularBladePainter extends CustomPainter {
         stops: const [0.9, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: centerRadius + 2));
     canvas.drawCircle(center, centerRadius + 2, outerRingPaint);
-    
+
     // Main center circle with subtle gradient
     final centerPaint = Paint()
       ..shader = RadialGradient(
@@ -92,7 +92,7 @@ class CircularBladePainter extends CustomPainter {
         stops: const [0.0, 0.7, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: centerRadius));
     canvas.drawCircle(center, centerRadius, centerPaint);
-    
+
     // Inner border circle
     final borderPaint = Paint()
       ..color = AppTheme.borderSubtle.withValues(alpha: 0.4)
