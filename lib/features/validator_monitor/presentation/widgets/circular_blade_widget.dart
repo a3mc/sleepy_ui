@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/themes/app_theme.dart';
 import '../../data/models/validator_snapshot.dart';
 import 'circular_blade_painter.dart';
 import 'event_marker_painter.dart';
+import 'plasma_globe_widget.dart';
 
 class CircularBladeWidget extends StatefulWidget {
   final List<ValidatorSnapshot> snapshots;
@@ -32,6 +33,8 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
   late Animation<double> _animation;
   double _rotationAngle = 0.0;
   DateTime? _lastSnapshotTime;
+  double _secondsSinceUpdate = 0.0; // Changed to double for ms precision
+  Timer? _updateTimer;
 
   @override
   void initState() {
@@ -47,6 +50,15 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     );
 
     _controller.forward();
+    
+    // Update timer every 50ms for smooth millisecond precision
+    _updateTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (_lastSnapshotTime != null) {
+        setState(() {
+          _secondsSinceUpdate = DateTime.now().difference(_lastSnapshotTime!).inMilliseconds / 1000.0;
+        });
+      }
+    });
   }
 
   @override
@@ -64,6 +76,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
         setState(() {
           _rotationAngle += math.pi / 30; // Rotate 6 degrees per new snapshot
           _lastSnapshotTime = currentTime;
+          _secondsSinceUpdate = 0; // Reset counter
         });
       }
     }
@@ -72,6 +85,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
   @override
   void dispose() {
     _controller.dispose();
+    _updateTimer?.cancel();
     super.dispose();
   }
 
@@ -142,42 +156,13 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
                     ],
                   ),
                 ),
-                // Rotating moon with circular frame - perfect circle mask
-                Transform.rotate(
-                  angle: _rotationAngle,
-                  child: Container(
-                    width: radius * 0.4,
-                    height: radius * 0.4,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        width: 2.0,
-                      ),
-                    ),
-                    child: ClipOval(
-                      child: Transform.scale(
-                        scale: 1.1, // Stretch slightly to ensure full coverage
-                        child: ImageFiltered(
-                          imageFilter: ui.ImageFilter.blur(
-                            sigmaX: 0.5,
-                            sigmaY: 0.5,
-                            tileMode: TileMode.decal,
-                          ),
-                          child: Opacity(
-                            opacity: 0.5,
-                            child: Image.asset(
-                              'assets/moon.png',
-                              fit: BoxFit.cover,
-                              colorBlendMode: BlendMode.softLight,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 _buildCenterInfo(context, radius),
+                // Timer widget at bottom-right corner
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: _buildTimerWidget(),
+                ),
               ],
             ),
           );
@@ -243,13 +228,30 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.rank != null)
-          Text(
-            widget.rank!,
-            style: theme.textTheme.displayMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: rankTextColor,
-              fontSize: rankFontSize,
-            ),
+          Stack(
+            children: [
+              // Subtle dark stroke matching app theme
+              Text(
+                widget.rank!,
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: rankFontSize,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 3.0
+                    ..color = AppTheme.backgroundDarker, // Use app's dark background color
+                ),
+              ),
+              // Fill layer (color-coded rank)
+              Text(
+                widget.rank!,
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: rankTextColor,
+                  fontSize: rankFontSize,
+                ),
+              ),
+            ],
           ),
         SizedBox(height: verticalSpacing),
         if (widget.alertStatus != null && widget.alertColor != null)
@@ -342,6 +344,65 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTimerWidget() {
+    final theme = Theme.of(context);
+    
+    // Format: "0.0s" with 1 decimal precision
+    final timeText = _secondsSinceUpdate.toStringAsFixed(1);
+    
+    // Color based on freshness: green < 3s, blue < 5s, red >= 5s
+    Color timeColor;
+    if (_secondsSinceUpdate < 3.0) {
+      timeColor = AppTheme.rankTop100Color; // Green - fresh
+    } else if (_secondsSinceUpdate < 5.0) {
+      timeColor = AppTheme.rankTop200Color; // Blue - ok
+    } else {
+      timeColor = AppTheme.ringCriticalColor; // Red - stale
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundDarker,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: timeColor.withValues(alpha: 0.5),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: timeColor,
+              boxShadow: [
+                BoxShadow(
+                  color: timeColor.withValues(alpha: 0.5),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${timeText}s',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: timeColor,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

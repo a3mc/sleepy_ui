@@ -67,26 +67,38 @@ class CircularBladePainter extends CustomPainter {
       );
     }
 
-    // Center circle removed to show rotating moon image clearly
-    // Color centerColor = AppTheme.rankOutsideColor;
-    // if (rank case final rankStr?) {
-    //   // Defensive: strip formatting characters (#, whitespace) before parsing
-    //   final cleanRank = rankStr.replaceAll(RegExp(r'[^\d]'), '');
-    //   final rankNum = int.tryParse(cleanRank);
-    //   if (rankNum != null) {
-    //     if (rankNum <= 100) {
-    //       centerColor = AppTheme.rankTop100Color;
-    //     } else if (rankNum <= 200) {
-    //       centerColor = AppTheme.rankTop200Color;
-    //     }
-    //   }
-    // }
-    //
-    // final centerPaint = Paint()
-    //   ..color = centerColor
-    //   ..style = PaintingStyle.fill;
-    // // Center circle with same gap as between rings
-    // canvas.drawCircle(center, ring1Inner - ringGap, centerPaint);
+    // Draw decorative inner circle with subtle styling
+    final centerRadius = ring1Inner - ringGap;
+    
+    // Outer decorative ring with gradient
+    final outerRingPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          AppTheme.borderSubtle.withValues(alpha: 0.3),
+          AppTheme.borderSubtle.withValues(alpha: 0.1),
+        ],
+        stops: const [0.9, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: centerRadius + 2));
+    canvas.drawCircle(center, centerRadius + 2, outerRingPaint);
+    
+    // Main center circle with subtle gradient
+    final centerPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          AppTheme.backgroundDarker,
+          AppTheme.backgroundDarker.withValues(alpha: 0.95),
+          Colors.black.withValues(alpha: 0.3),
+        ],
+        stops: const [0.0, 0.7, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: centerRadius));
+    canvas.drawCircle(center, centerRadius, centerPaint);
+    
+    // Inner border circle
+    final borderPaint = Paint()
+      ..color = AppTheme.borderSubtle.withValues(alpha: 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(center, centerRadius - 1, borderPaint);
 
     // Draw ring separators
     _drawRingSeparators(canvas, center, ring1Inner, ring1Outer, ring2Inner,
