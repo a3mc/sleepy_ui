@@ -99,8 +99,8 @@ class NetworkGapsChart extends ConsumerWidget {
     if (compactMode && data.isNotEmpty) {
       final latest = data.last;
       final rank1Gap = latest.gapToRank1.abs();
-      final top100Gap = latest.gapToTop100.abs();
-      final top200Gap = latest.gapToTop200.abs();
+      final top100Gap = latest.gapToTop100;
+      final top200Gap = latest.gapToTop200;
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -110,9 +110,14 @@ class NetworkGapsChart extends ConsumerWidget {
             _buildCompactStat(
                 'R1', rank1Gap.toString(), AppTheme.rank1GapColor),
             _buildCompactStat(
-                'R100', top100Gap.toString(), AppTheme.rank100GapColor),
+                'R100', 
+                top100Gap.abs().toString(), 
+                top100Gap > 0 ? AppTheme.healthyColor : AppTheme.rank100GapColor),
             _buildCompactStat(
-                'R200', top200Gap.toString(), AppTheme.rank200GapColor),
+                'R200', 
+                top200Gap.abs().toString(), 
+                top200Gap > 0 ? AppTheme.healthyColor : AppTheme.rank200GapColor),
+            _buildCompactDelta(data),
           ],
         ),
       );
@@ -146,33 +151,28 @@ class NetworkGapsChart extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  isRank1 ? Icons.emoji_events : Icons.trending_up,
-                  size: 14,
-                  color: isRank1 ? AppTheme.goldColor : AppTheme.rank1GapColor,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'CREDITS TO RANK_1',
+                Text(
+                  'DISTANCE',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: isRank1
+                        ? AppTheme.healthyColor
+                        : AppTheme.rank1GapColor,
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isRank1
-                        ? AppTheme.healthyColor.withValues(alpha: 0.15)
-                        : AppTheme.rank1GapColor.withValues(alpha: 0.15),
+                    color: (isRank1 
+                        ? AppTheme.healthyColor 
+                        : AppTheme.rank1GapColor).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    latestGap.abs().toString(),
+                    '${latestGap.abs()}',
                     style: TextStyle(
                       color: isRank1
                           ? AppTheme.healthyColor
@@ -198,24 +198,9 @@ class NetworkGapsChart extends ConsumerWidget {
               },
             ),
           ),
-          // Time window indicator for historical data (hidden in compact mode)
-          if (!compactMode && data.length >= 2)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.cardBackgroundColor,
-                borderRadius: BorderRadius.circular(3),
-                border: Border.all(color: AppTheme.borderColor, width: 1),
-              ),
-              child: Text(
-                _formatTimeRange(data.first.timestamp, data.last.timestamp),
-                style: const TextStyle(
-                  color: AppTheme.secondaryTextColor,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          const SizedBox(width: 12),
+          // Delta label (change from start to end)
+          _buildDeltaLabel(data),
         ],
       ),
     );
@@ -238,6 +223,42 @@ class NetworkGapsChart extends ConsumerWidget {
         Text(
           value,
           style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactDelta(List<ValidatorSnapshot> dataPoints) {
+    if (dataPoints.length < 2) return const SizedBox.shrink();
+
+    final allValues = dataPoints.map((s) => s.gapToRank1.abs()).toList();
+    final cleanedValues = _removeSpikeOutliers(allValues);
+
+    if (cleanedValues.length < 2) return const SizedBox.shrink();
+
+    final delta = cleanedValues.last - cleanedValues.first;
+    const color = Color(0xFF00E5FF); // Neon cyan
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Δ',
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${delta >= 0 ? '+' : ''}$delta',
+          style: const TextStyle(
             color: color,
             fontSize: 11,
             fontWeight: FontWeight.bold,
@@ -310,9 +331,11 @@ class NetworkGapsChart extends ConsumerWidget {
       label: _buildChartSemanticDescription(dataPoints),
       readOnly: true,
       child: RepaintBoundary(
-        child: Stack(
-          children: [
-            LineChart(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                LineChart(
               LineChartData(
                 clipData: const FlClipData.all(),
                 extraLinesData: ExtraLinesData(
@@ -555,10 +578,192 @@ class NetworkGapsChart extends ConsumerWidget {
                 left: 70,
                 child: _buildAlertLegend(),
               ),
-          ],
-        ), // Close Stack
+              ],
+            );
+          },
+        ), // Close LayoutBuilder
       ), // Close RepaintBoundary
     ); // Close Semantics
+  }
+
+  /// Build compact delta label for header
+  Widget _buildDeltaLabel(List<ValidatorSnapshot> dataPoints) {
+    if (dataPoints.length < 2) return const SizedBox(width: 80);
+
+    // Extract gap values
+    final allValues = dataPoints.map((s) => s.gapToRank1.abs()).toList();
+    
+    // Remove outliers using same logic as sparklines (mean ± 2*std)
+    final cleanedValues = _removeSpikeOutliers(allValues);
+
+    if (cleanedValues.length < 2) return const SizedBox(width: 80);
+
+    // Calculate simple delta: last - first
+    final startValue = cleanedValues.first;
+    final endValue = cleanedValues.last;
+    final delta = endValue - startValue;
+
+    final Color trendColor = const Color(0xFF00E5FF); // Neon cyan
+
+    return SizedBox(
+      width: 80,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.cardBackgroundColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: trendColor.withValues(alpha: 0.15),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: trendColor.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Δ',
+              style: TextStyle(
+                color: trendColor,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: trendColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${delta >= 0 ? '+' : ''}$delta',
+                style: TextStyle(
+                  color: trendColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shows change from start to end of timeframe (with outliers removed)
+  Widget _buildAverageSpikeOverlay(
+    List<ValidatorSnapshot> dataPoints,
+    BoxConstraints constraints,
+  ) {
+    if (dataPoints.length < 2) return const SizedBox.shrink();
+
+    // Extract gap values
+    final allValues = dataPoints.map((s) => s.gapToRank1.abs()).toList();
+    
+    // Remove outliers using same logic as sparklines (mean ± 2*std)
+    final cleanedValues = _removeSpikeOutliers(allValues);
+
+    if (cleanedValues.length < 2) return const SizedBox.shrink();
+
+    // Calculate simple delta: last - first
+    final startValue = cleanedValues.first;
+    final endValue = cleanedValues.last;
+    final delta = endValue - startValue; // Positive = worse, negative = better
+
+    // Get last data point value for Y positioning
+    final lastGapValue = dataPoints.last.gapToRank1.abs().toDouble();
+    
+    // Calculate Y position based on chart's coordinate system
+    // The chart Y goes from minY to maxY, we need to map our value to pixel position
+    final allGaps = dataPoints.map((s) => s.gapToRank1.abs()).toList();
+    final minGap = allGaps.reduce((a, b) => a < b ? a : b).toDouble();
+    final maxGap = allGaps.reduce((a, b) => a > b ? a : b).toDouble();
+    final range = maxGap - minGap;
+    final padding = range * 0.1;
+    final chartMinY = minGap - padding;
+    final chartMaxY = maxGap + padding;
+    final chartRange = chartMaxY - chartMinY;
+    
+    // Invert Y: chart Y=0 is at bottom, pixel Y=0 is at top
+    final normalizedY = (lastGapValue - chartMinY) / chartRange; // 0 to 1
+    final pixelY = constraints.maxHeight * (1 - normalizedY); // Flip it
+    
+    // Position to the left of the last dot, above the line
+    final pixelX = constraints.maxWidth - 140; // Left of the right edge
+
+    return Positioned(
+      left: pixelX,
+      top: pixelY - 50, // Position well above the line
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: delta >= 0
+                ? Colors.red.withValues(alpha: 0.6)
+                : Colors.green.withValues(alpha: 0.6),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (delta >= 0 ? Colors.red : Colors.green)
+                  .withValues(alpha: 0.25),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Text(
+          '${delta >= 0 ? '+' : ''}$delta',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'monospace',
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Remove outlier spikes using statistical bounds (mean ± 2*std)
+  /// Same logic as gap_trend_indicators.dart sparkline smoothing
+  List<int> _removeSpikeOutliers(List<int> values) {
+    if (values.length < 5) return values;
+
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final variance =
+        values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) /
+            values.length;
+    final std = sqrt(variance);
+
+    final lowerBound = mean - 2.0 * std;
+    final upperBound = mean + 2.0 * std;
+
+    final cleaned = <int>[];
+    int lastValid = mean.round();
+
+    for (final value in values) {
+      if (value >= lowerBound && value <= upperBound) {
+        cleaned.add(value);
+        lastValid = value;
+      } else {
+        cleaned.add(lastValid); // Replace outlier with last valid
+      }
+    }
+
+    return cleaned;
   }
 
   Widget _buildEmptyState() {

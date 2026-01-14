@@ -18,7 +18,7 @@ class ApiConstants {
   static const String historyPath = '/history';
 
   // Timeouts
-  static const Duration httpTimeout = Duration(seconds: 30);
+  static const Duration httpTimeout = Duration(seconds: 10);
   static const Duration sseReconnectDelay = Duration(seconds: 2);
   static const Duration maxReconnectDelay = Duration(seconds: 30);
 

@@ -64,32 +64,28 @@ class GapTrendIndicators extends StatelessWidget {
   Widget _buildTrendCard(
       String label, ({int current, int delta, List<int> history}) trend) {
     // Gap NUMBER color: based on current position
-    // Empirical data: rank 445 has gaps -281/-207 (negative) = outside = BAD
-    // Positive gap = inside top100/200 (more credits) = GOOD = GREEN
-    // Negative gap = outside top100/200 (fewer credits) = BAD = RED
+    // Positive gap = inside top100/200 (more credits than cutoff) = GOOD = GREEN
+    // Negative gap = outside top100/200 (fewer credits than cutoff) = BAD = RED
     final gapNumberColor = trend.current > 0
         ? AppTheme.healthyColor // Green - inside top100/200
         : AppTheme.rank100GapColor; // Red - outside top100/200
 
-    // Card BORDER and SPARKLINE color: based on trend direction over 1h buffer
-    // Moving toward 0 (target) = IMPROVING = GREEN
-    // Moving away from 0 (target) = WORSENING = RED
-    // Logic depends on whether gap is currently positive (inside) or negative (outside)
+    // Card BORDER and SPARKLINE color: based on trend direction
+    // For top performers (positive gap): INCREASING gap = pulling ahead = GOOD = GREEN
+    // For bottom performers (negative gap): INCREASING gap toward 0 = catching up = GOOD = GREEN
     final Color trendColor;
     if (trend.delta == 0) {
       trendColor = AppTheme.gapNeutralColor; // Gray - no change
     } else if (trend.current > 0) {
-      // Positive gap (inside boundaries): delta > 0 = moving away from 0 = worsening
+      // Positive gap (inside top 100/200): delta > 0 = pulling further ahead = GOOD
       trendColor = trend.delta > 0
-          ? AppTheme.rank100GapColor // Red - gap increasing (worsening)
-          : AppTheme
-              .healthyColor; // Green - gap decreasing (improving toward 0)
+          ? AppTheme.healthyColor // Green - gap increasing (pulling ahead)
+          : AppTheme.rank100GapColor; // Red - gap decreasing (being caught)
     } else {
-      // Negative gap (outside boundaries): delta > 0 = moving toward 0 = improving
+      // Negative gap (outside top 100/200): delta > 0 = moving toward 0 = GOOD
       trendColor = trend.delta > 0
-          ? AppTheme.healthyColor // Green - gap increasing (improving toward 0)
-          : AppTheme
-              .rank100GapColor; // Red - gap decreasing (worsening away from 0)
+          ? AppTheme.healthyColor // Green - gap increasing toward 0 (catching up)
+          : AppTheme.rank100GapColor; // Red - gap decreasing (falling further behind)
     }
 
     final deltaAbs = trend.delta.abs();
@@ -100,7 +96,7 @@ class GapTrendIndicators extends StatelessWidget {
         color: AppTheme.cardBackgroundColor,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: trendColor.withValues(alpha: 0.3), // Border shows trend
+          color: trendColor.withValues(alpha: 0.15),
           width: 1,
         ),
         boxShadow: [
@@ -369,8 +365,7 @@ class _SparklinePainter extends CustomPainter {
     for (int i = 0; i < _smoothedValues.length; i++) {
       final x = i * stepX;
       final normalized = (_smoothedValues[i] - _minVal) / _range;
-      final y = normalized *
-          size.height; // Higher values = higher y = bottom of canvas
+      final y = size.height - (normalized * size.height); // INVERTED: Higher values = higher on canvas (lower y)
       points.add(Offset(x, y));
     }
 
