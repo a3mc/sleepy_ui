@@ -168,18 +168,19 @@ class CircularBladePainter extends CustomPainter {
     // If gaps are exact opposites (sum = 0), mark both as GRAY (jitter)
     // Excludes pairs where both are 0 (stable, not jitter)
     final Set<int> grayedSegments = {};
-    final List<int> cancellationBoundaries = []; // Store boundary positions for X markers
-    
+    final List<int> cancellationBoundaries =
+        []; // Store boundary positions for X markers
+
     for (int i = 0; i < itemsToDraw - 1; i++) {
       // Skip if current segment already grayed from previous pair
       if (grayedSegments.contains(i)) continue;
-      
+
       final currentSnapshotIndex = startIndex + (itemsToDraw - 1 - i);
       final nextSnapshotIndex = startIndex + (itemsToDraw - 1 - (i + 1));
-      
+
       final currentGap = snapshots[currentSnapshotIndex].creditsPerformanceGap;
       final nextGap = snapshots[nextSnapshotIndex].creditsPerformanceGap;
-      
+
       // Zero tolerance: exact cancellation only, but exclude (0,0) pairs
       // Only gray actual opposite movements: +16/-16, +32/-32, etc.
       if (currentGap + nextGap == 0 && currentGap != 0) {
@@ -238,7 +239,8 @@ class CircularBladePainter extends CustomPainter {
       // Professional green with X marker if canceled jitter
 
       final ring3Color = grayedSegments.contains(i)
-          ? AppTheme.ringExcellentColor // Professional green for canceled jitter
+          ? AppTheme
+              .ringExcellentColor // Professional green for canceled jitter
           : _getCreditsPerformanceColor(snapshot.creditsPerformanceGap);
 
       _drawSegment(
@@ -292,7 +294,10 @@ class CircularBladePainter extends CustomPainter {
     // PHASE 3: Draw cancellation markers at boundaries
     for (final boundaryIndex in cancellationBoundaries) {
       // Position X at the center of the gap between segments
-      final boundaryAngle = newestAngle + (boundaryIndex * sweepAngle) + sweepAngle - (gapAngle / 2);
+      final boundaryAngle = newestAngle +
+          (boundaryIndex * sweepAngle) +
+          sweepAngle -
+          (gapAngle / 2);
       _drawCancellationMarker(
           canvas, center, ring3Inner, ring3Outer, boundaryAngle);
     }
@@ -341,37 +346,6 @@ class CircularBladePainter extends CustomPainter {
         ..strokeWidth = 2.0
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
       canvas.drawPath(path, glowPaint);
-    }
-  }
-
-  void _drawRingSeparators(
-    Canvas canvas,
-    Offset center,
-    double ring1Inner,
-    double ring1Outer,
-    double ring2Inner,
-    double ring2Outer,
-    double ring3Inner,
-    double ring3Outer,
-  ) {
-    final separatorPaint = Paint()
-      ..color = AppTheme.borderDefault
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    // Draw radial lines at 12, 3, 6, 9 o'clock positions
-    for (int i = 0; i < 4; i++) {
-      final angle = (i * math.pi / 2) - (math.pi / 2); // Start from top
-      final cos = math.cos(angle);
-      final sin = math.sin(angle);
-
-      final startX = center.dx + ring1Inner * cos;
-      final startY = center.dy + ring1Inner * sin;
-      final endX = center.dx + ring3Outer * cos;
-      final endY = center.dy + ring3Outer * sin;
-
-      canvas.drawLine(
-          Offset(startX, startY), Offset(endX, endY), separatorPaint);
     }
   }
 

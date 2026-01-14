@@ -363,47 +363,47 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           timeColor = AppTheme.ringCriticalColor; // Red - stale
         }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundDarker,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: timeColor.withValues(alpha: 0.5),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: timeColor,
-              boxShadow: [
-                BoxShadow(
-                  color: timeColor.withValues(alpha: 0.5),
-                  blurRadius: 4,
-                  spreadRadius: 1,
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundDarker,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: timeColor.withValues(alpha: 0.5),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: timeColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: timeColor.withValues(alpha: 0.5),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${timeText}s',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: timeColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          Text(
-            '${timeText}s',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: timeColor,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
+        );
       },
     );
   }

@@ -84,8 +84,10 @@ class GapTrendIndicators extends StatelessWidget {
     } else {
       // Negative gap (outside top 100/200): delta > 0 = moving toward 0 = GOOD
       trendColor = trend.delta > 0
-          ? AppTheme.healthyColor // Green - gap increasing toward 0 (catching up)
-          : AppTheme.rank100GapColor; // Red - gap decreasing (falling further behind)
+          ? AppTheme
+              .healthyColor // Green - gap increasing toward 0 (catching up)
+          : AppTheme
+              .rank100GapColor; // Red - gap decreasing (falling further behind)
     }
 
     final deltaAbs = trend.delta.abs();
@@ -365,7 +367,9 @@ class _SparklinePainter extends CustomPainter {
     for (int i = 0; i < _smoothedValues.length; i++) {
       final x = i * stepX;
       final normalized = (_smoothedValues[i] - _minVal) / _range;
-      final y = size.height - (normalized * size.height); // INVERTED: Higher values = higher on canvas (lower y)
+      final y = size.height -
+          (normalized *
+              size.height); // INVERTED: Higher values = higher on canvas (lower y)
       points.add(Offset(x, y));
     }
 

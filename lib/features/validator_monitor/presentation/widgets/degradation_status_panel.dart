@@ -58,8 +58,8 @@ class DegradationStatusPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildHeader(activeDetections),
-              ...activeDetections.map((detection) => 
-                _buildDetectionItem(detection),
+              ...activeDetections.map(
+                (detection) => _buildDetectionItem(detection),
               ),
             ],
           ),
@@ -120,8 +120,8 @@ class DegradationStatusPanel extends StatelessWidget {
     }
 
     // Add reset threshold to title when available
-    final resetInfo = events != null 
-        ? ' • Reset: ${events!.temporal.counterResetThreshold}' 
+    final resetInfo = events != null
+        ? ' • Reset: ${events!.temporal.counterResetThreshold}'
         : '';
 
     return Row(
@@ -400,15 +400,18 @@ class _Detection {
             ? _getTemporalSubtitle(count, warningThreshold, criticalThreshold,
                 level, resetThreshold)
             : 'No degradation detected',
-        severity = _getTemporalSeverity(count, warningThreshold, criticalThreshold),
+        severity =
+            _getTemporalSeverity(count, warningThreshold, criticalThreshold),
         thresholdMarkers = [
           _ThresholdMarker(
             position: warningThreshold / criticalThreshold,
-            color: count > 0 ? const Color(0xFFFF6600) : const Color(0xFF303030),
+            color:
+                count > 0 ? const Color(0xFFFF6600) : const Color(0xFF303030),
           ),
           _ThresholdMarker(
             position: 1.0,
-            color: count > 0 ? const Color(0xFFFF0000) : const Color(0xFF303030),
+            color:
+                count > 0 ? const Color(0xFFFF0000) : const Color(0xFF303030),
           ),
         ];
 
