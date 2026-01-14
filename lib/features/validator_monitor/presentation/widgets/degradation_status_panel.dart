@@ -60,7 +60,7 @@ class DegradationStatusPanel extends StatelessWidget {
                 _buildHeader(activeDetections),
                 const SizedBox(height: 16),
                 ...activeDetections.map((detection) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: _buildDetectionItem(detection),
                     )),
               ],
@@ -76,7 +76,7 @@ class DegradationStatusPanel extends StatelessWidget {
         ? 0
         : detections.map((d) => d.severity).reduce(math.max);
 
-    final priorityOrder = ['Resource Lag', 'Data Distance', 'Root Distance'];
+    final priorityOrder = ['V Halt', 'N Halt', 'Credits', 'Vote', 'Root'];
 
     final criticalDetections =
         detections.where((d) => d.severity >= 3).toList();
@@ -122,35 +122,40 @@ class DegradationStatusPanel extends StatelessWidget {
       color = const Color(0xFF4CAF50);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // Add reset threshold to title when available
+    final resetInfo = events != null 
+        ? ' • Reset: ${events!.temporal.counterResetThreshold}' 
+        : '';
+
+    return Row(
       children: [
-        Row(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
-            ),
-          ],
-        ),
-        if (events != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Counter resets after ${events!.temporal.counterResetThreshold} consecutive healthy cycles',
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 11,
-              fontStyle: FontStyle.italic,
-            ),
+              if (resetInfo.isNotEmpty)
+                Text(
+                  resetInfo,
+                  style: const TextStyle(
+                    color: Color(0xFF888888),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
@@ -159,46 +164,49 @@ class DegradationStatusPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Single-line compact layout: Label and Status on same line
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // Left side: dot + label
             Row(
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 6,
+                  height: 6,
                   decoration: BoxDecoration(
                     color: detection.color,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                         color: detection.color.withValues(alpha: 0.5),
-                        blurRadius: 6,
-                        spreadRadius: 1,
+                        blurRadius: 4,
+                        spreadRadius: 0.5,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   detection.label,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
+            // Right side: status text
             const SizedBox(width: 8),
             Flexible(
               child: Text(
                 detection.statusText,
                 style: TextStyle(
                   color: detection.color,
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 0.3,
+                  letterSpacing: 0.2,
                 ),
                 textAlign: TextAlign.right,
                 overflow: TextOverflow.ellipsis,
@@ -206,15 +214,15 @@ class DegradationStatusPanel extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4), // Reduced from 8
         _buildProgressBar(detection),
         if (detection.subtitle != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 3), // Reduced from 4
           Text(
             detection.subtitle!,
             style: const TextStyle(
               color: Color(0xFF888888),
-              fontSize: 11,
+              fontSize: 10, // Reduced from 11
             ),
           ),
         ],
@@ -229,10 +237,10 @@ class DegradationStatusPanel extends StatelessWidget {
           children: [
             // Background track
             Container(
-              height: 6,
+              height: 5, // Reduced from 6 for compact layout
               decoration: BoxDecoration(
                 color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(2.5),
               ),
             ),
             // Progress fill with gradient
@@ -245,7 +253,7 @@ class DegradationStatusPanel extends StatelessWidget {
                     ? constraints.maxWidth * value
                     : 0.0;
                 return Container(
-                  height: 6,
+                  height: 5, // Reduced from 6
                   width: width,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -254,7 +262,7 @@ class DegradationStatusPanel extends StatelessWidget {
                         detection.color,
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(3),
+                    borderRadius: BorderRadius.circular(2.5),
                     boxShadow: [
                       BoxShadow(
                         color: detection.color.withValues(alpha: 0.4),
@@ -272,7 +280,7 @@ class DegradationStatusPanel extends StatelessWidget {
                   left: constraints.maxWidth * marker.position - 1,
                   child: Container(
                     width: 2,
-                    height: 6,
+                    height: 5, // Match progress bar height
                     color: marker.color,
                   ),
                 );
@@ -291,7 +299,7 @@ class DegradationStatusPanel extends StatelessWidget {
     final credits = events!.temporal.credits;
 
     detections.add(_Detection(
-      label: 'Data Distance',
+      label: 'Vote',
       count: vote.consecutiveCount,
       warningThreshold: vote.warningThreshold,
       criticalThreshold: vote.criticalThreshold,
@@ -301,7 +309,7 @@ class DegradationStatusPanel extends StatelessWidget {
     ));
 
     detections.add(_Detection(
-      label: 'Root Distance',
+      label: 'Root',
       count: root.consecutiveCount,
       warningThreshold: root.warningThreshold,
       criticalThreshold: root.criticalThreshold,
@@ -311,7 +319,7 @@ class DegradationStatusPanel extends StatelessWidget {
     ));
 
     detections.add(_Detection(
-      label: 'Resource Lag',
+      label: 'Credits',
       count: credits.consecutiveCount,
       warningThreshold: credits.warningThreshold,
       criticalThreshold: credits.criticalThreshold,
@@ -330,15 +338,25 @@ class DegradationStatusPanel extends StatelessWidget {
     if (events!.creditsStagnant.isDetecting ||
         events!.creditsStagnant.isActive) {
       detections.add(_Detection.validatorAlert(
-        label: 'Resource Stagnant',
+        label: 'V Halt',
         alert: events!.creditsStagnant,
+      ));
+    } else {
+      // Show as healthy when not detecting
+      detections.add(_Detection.placeholder(
+        label: 'V Halt',
       ));
     }
 
     if (events!.networkHalted.isDetecting || events!.networkHalted.isActive) {
       detections.add(_Detection.validatorAlert(
-        label: 'Network Halted',
+        label: 'N Halt',
         alert: events!.networkHalted,
+      ));
+    } else {
+      // Show as healthy when not detecting
+      detections.add(_Detection.placeholder(
+        label: 'N Halt',
       ));
     }
 
@@ -411,6 +429,18 @@ class _Detection {
         severity = 2,
         thresholdMarkers = null,
         isActive = true,
+        resetThreshold = 0;
+
+  // Placeholder for always-visible but inactive alerts
+  _Detection.placeholder({
+    required this.label,
+  })  : color = const Color(0xFF4CAF50), // Green for healthy
+        progress = 0.0,
+        statusText = 'Healthy',
+        subtitle = 'No issues detected',
+        severity = 0,
+        thresholdMarkers = null,
+        isActive = false,
         resetThreshold = 0;
 
   static Color _getTemporalColor(

@@ -31,7 +31,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
   late AnimationController _controller;
   late Animation<double> _animation;
   DateTime? _lastSnapshotTime;
-  double _secondsSinceUpdate = 0.0; // Changed to double for ms precision
+  final ValueNotifier<double> _secondsSinceUpdate = ValueNotifier(0.0);
   Timer? _updateTimer;
 
   @override
@@ -49,14 +49,12 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
 
     _controller.forward();
 
-    // Update timer every 50ms for smooth millisecond precision
-    _updateTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+    // Update timer every 100ms - smooth for user, 2x better than original 50ms
+    _updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (_lastSnapshotTime != null) {
-        setState(() {
-          _secondsSinceUpdate =
-              DateTime.now().difference(_lastSnapshotTime!).inMilliseconds /
-                  1000.0;
-        });
+        _secondsSinceUpdate.value =
+            DateTime.now().difference(_lastSnapshotTime!).inMilliseconds /
+                1000.0;
       }
     });
   }
@@ -73,10 +71,8 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     if (widget.snapshots.isNotEmpty) {
       final currentTime = widget.snapshots.last.timestamp;
       if (_lastSnapshotTime != currentTime) {
-        setState(() {
-          _lastSnapshotTime = currentTime;
-          _secondsSinceUpdate = 0; // Reset counter
-        });
+        _lastSnapshotTime = currentTime;
+        _secondsSinceUpdate.value = 0; // Reset counter
       }
     }
   }
@@ -85,6 +81,7 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
   void dispose() {
     _controller.dispose();
     _updateTimer?.cancel();
+    _secondsSinceUpdate.dispose();
     super.dispose();
   }
 
@@ -350,18 +347,21 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
   Widget _buildTimerWidget() {
     final theme = Theme.of(context);
 
-    // Format: "0.0s" with 1 decimal precision
-    final timeText = _secondsSinceUpdate.toStringAsFixed(1);
+    return ValueListenableBuilder<double>(
+      valueListenable: _secondsSinceUpdate,
+      builder: (context, seconds, child) {
+        // Format: "0.0s" with 1 decimal precision
+        final timeText = seconds.toStringAsFixed(1);
 
-    // Color based on freshness: green < 3s, blue < 5s, red >= 5s
-    Color timeColor;
-    if (_secondsSinceUpdate < 3.0) {
-      timeColor = AppTheme.rankTop100Color; // Green - fresh
-    } else if (_secondsSinceUpdate < 5.0) {
-      timeColor = AppTheme.rankTop200Color; // Blue - ok
-    } else {
-      timeColor = AppTheme.ringCriticalColor; // Red - stale
-    }
+        // Color based on freshness: green < 3s, blue < 5s, red >= 5s
+        Color timeColor;
+        if (seconds < 3.0) {
+          timeColor = AppTheme.rankTop100Color; // Green - fresh
+        } else if (seconds < 5.0) {
+          timeColor = AppTheme.rankTop200Color; // Blue - ok
+        } else {
+          timeColor = AppTheme.ringCriticalColor; // Red - stale
+        }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -403,6 +403,8 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

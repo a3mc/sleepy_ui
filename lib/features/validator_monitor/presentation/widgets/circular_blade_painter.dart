@@ -100,9 +100,9 @@ class CircularBladePainter extends CustomPainter {
       ..strokeWidth = 1.5;
     canvas.drawCircle(center, centerRadius - 1, borderPaint);
 
-    // Draw ring separators
-    _drawRingSeparators(canvas, center, ring1Inner, ring1Outer, ring2Inner,
-        ring2Outer, ring3Inner, ring3Outer);
+    // Ring separators removed - visual artifact
+    // _drawRingSeparators(canvas, center, ring1Inner, ring1Outer, ring2Inner,
+    //     ring2Outer, ring3Inner, ring3Outer);
 
     // NOW indicator removed per user request
     // if (snapshots.isNotEmpty) {
@@ -163,6 +163,33 @@ class CircularBladePainter extends CustomPainter {
     final itemsToDraw =
         snapshotCount > segmentCount ? segmentCount : snapshotCount;
 
+    // PHASE 1: Identify jitter cancellations for Ring 3 (credits performance)
+    // Pair-wise cancellation: check each segment with NEXT (newer) segment
+    // If gaps are exact opposites (sum = 0), mark both as GRAY (jitter)
+    // Excludes pairs where both are 0 (stable, not jitter)
+    final Set<int> grayedSegments = {};
+    final List<int> cancellationBoundaries = []; // Store boundary positions for X markers
+    
+    for (int i = 0; i < itemsToDraw - 1; i++) {
+      // Skip if current segment already grayed from previous pair
+      if (grayedSegments.contains(i)) continue;
+      
+      final currentSnapshotIndex = startIndex + (itemsToDraw - 1 - i);
+      final nextSnapshotIndex = startIndex + (itemsToDraw - 1 - (i + 1));
+      
+      final currentGap = snapshots[currentSnapshotIndex].creditsPerformanceGap;
+      final nextGap = snapshots[nextSnapshotIndex].creditsPerformanceGap;
+      
+      // Zero tolerance: exact cancellation only, but exclude (0,0) pairs
+      // Only gray actual opposite movements: +16/-16, +32/-32, etc.
+      if (currentGap + nextGap == 0 && currentGap != 0) {
+        grayedSegments.add(i);
+        grayedSegments.add(i + 1);
+        cancellationBoundaries.add(i); // Mark boundary between i and i+1
+      }
+    }
+
+    // PHASE 2: Draw all segments with cancellation applied
     for (int i = 0; i < itemsToDraw; i++) {
       // Draw from newest (buffer end) backward in time
       final snapshotIndex = startIndex + (itemsToDraw - 1 - i);
@@ -208,6 +235,11 @@ class CircularBladePainter extends CustomPainter {
       // Ring 3 (outermost): Credits Performance Gap (rank1_delta - our_delta)
       // Negative = we earn MORE than rank1 (GOOD)
       // Positive = we earn LESS than rank1 (BAD - degradation)
+      // Professional green with X marker if canceled jitter
+
+      final ring3Color = grayedSegments.contains(i)
+          ? AppTheme.ringExcellentColor // Professional green for canceled jitter
+          : _getCreditsPerformanceColor(snapshot.creditsPerformanceGap);
 
       _drawSegment(
         canvas,
@@ -216,7 +248,7 @@ class CircularBladePainter extends CustomPainter {
         ring3Outer,
         segmentAngle,
         sweepAngle - gapAngle,
-        _getCreditsPerformanceColor(snapshot.creditsPerformanceGap),
+        ring3Color,
         animationValue,
         ageOpacity,
         isRecentSegment: i < 5,
@@ -255,6 +287,14 @@ class CircularBladePainter extends CustomPainter {
               canvas, center, ring3Inner, ring3Outer, segmentAngle, sweepAngle);
         }
       }
+    }
+
+    // PHASE 3: Draw cancellation markers at boundaries
+    for (final boundaryIndex in cancellationBoundaries) {
+      // Position X at the center of the gap between segments
+      final boundaryAngle = newestAngle + (boundaryIndex * sweepAngle) + sweepAngle - (gapAngle / 2);
+      _drawCancellationMarker(
+          canvas, center, ring3Inner, ring3Outer, boundaryAngle);
     }
   }
 
@@ -374,6 +414,70 @@ class CircularBladePainter extends CustomPainter {
       // We're earning 11+ fewer credits than rank1 → CRITICAL (red)
       return AppTheme.ringCriticalColor; // Red
     }
+  }
+
+  void _drawCancellationMarker(
+    Canvas canvas,
+    Offset center,
+    double innerRadius,
+    double outerRadius,
+    double boundaryAngle,
+  ) {
+    // Dot marker styled like the separation gap - same color
+    // Creates subtle indication of canceled jitter
+    final midRadius = (innerRadius + outerRadius) / 2;
+    final dotRadius = (outerRadius - innerRadius) * 0.05; // Small, subtle dot
+
+    // Center the dot at the boundary angle
+    final centerX = center.dx + midRadius * math.cos(boundaryAngle);
+    final centerY = center.dy + midRadius * math.sin(boundaryAngle);
+
+    // Dot paint - same dark background as gaps
+    final dotPaint = Paint()
+      ..color = AppTheme.backgroundDarker
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(Offset(centerX, centerY), dotRadius, dotPaint);
+
+    /* X marker version - keeping code for easy rollback
+    final markerSize = (outerRadius - innerRadius) * 0.15;
+    const gapAngleRad = 0.015;
+    final gapWidth = midRadius * gapAngleRad;
+    
+    final xPaint = Paint()
+      ..color = AppTheme.backgroundDarker
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = gapWidth
+      ..strokeCap = StrokeCap.round;
+
+    final halfSize = markerSize / 2;
+    final angle45 = boundaryAngle + math.pi / 4;
+    final angle135 = boundaryAngle - math.pi / 4;
+    
+    canvas.drawLine(
+      Offset(
+        centerX + halfSize * math.cos(angle45),
+        centerY + halfSize * math.sin(angle45),
+      ),
+      Offset(
+        centerX - halfSize * math.cos(angle45),
+        centerY - halfSize * math.sin(angle45),
+      ),
+      xPaint,
+    );
+    
+    canvas.drawLine(
+      Offset(
+        centerX + halfSize * math.cos(angle135),
+        centerY + halfSize * math.sin(angle135),
+      ),
+      Offset(
+        centerX - halfSize * math.cos(angle135),
+        centerY - halfSize * math.sin(angle135),
+      ),
+      xPaint,
+    );
+    */
   }
 
   void _drawAlertMarker(
