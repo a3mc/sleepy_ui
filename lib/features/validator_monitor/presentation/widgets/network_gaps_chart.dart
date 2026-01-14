@@ -40,42 +40,55 @@ class NetworkGapsChart extends ConsumerWidget {
       return _buildEmptyState();
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundDarker,
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(
-          color: AppTheme.borderColor,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(data, compactMode),
-          const Divider(height: 1, color: AppTheme.borderColor),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final showCreditsFeed =
-                      ref.watch(creditsFeedVisibilityProvider);
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildChartContent(
-                            data, selectedRange, ref, compactMode),
-                      ),
-                      if (showCreditsFeed) const SizedBox(width: 12),
-                      if (showCreditsFeed) _buildCreditsFlow(ref),
-                    ],
-                  );
-                },
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Adapt padding for extreme layouts
+        final availableHeight = constraints.maxHeight;
+        final padding = availableHeight < 80 ? 4.0 : 12.0;
+
+        return Container(
+          constraints: const BoxConstraints(minHeight: 120),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundDarker,
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(
+              color: AppTheme.borderColor,
+              width: 1,
             ),
           ),
-        ],
-      ),
+          child: ClipRect(
+            child: Column(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                if (availableHeight >= 80) _buildHeader(data, compactMode),
+                if (availableHeight >= 80)
+                  const Divider(height: 1, color: AppTheme.borderColor),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Consumer(
+                      builder: (context, ref, _) {
+                        final showCreditsFeed =
+                            ref.watch(creditsFeedVisibilityProvider);
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: _buildChartContent(
+                                  data, selectedRange, ref, compactMode),
+                            ),
+                            if (showCreditsFeed) const SizedBox(width: 12),
+                            if (showCreditsFeed) _buildCreditsFlow(ref),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -86,8 +99,8 @@ class NetworkGapsChart extends ConsumerWidget {
     if (compactMode && data.isNotEmpty) {
       final latest = data.last;
       final rank1Gap = latest.gapToRank1.abs();
-      final top100Gap = latest.gapToTop100.abs();
-      final top200Gap = latest.gapToTop200.abs();
+      final top100Gap = latest.gapToTop100;
+      final top200Gap = latest.gapToTop200;
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -97,9 +110,18 @@ class NetworkGapsChart extends ConsumerWidget {
             _buildCompactStat(
                 'R1', rank1Gap.toString(), AppTheme.rank1GapColor),
             _buildCompactStat(
-                'R100', top100Gap.toString(), AppTheme.rank100GapColor),
+                'R100',
+                top100Gap.abs().toString(),
+                top100Gap > 0
+                    ? AppTheme.healthyColor
+                    : AppTheme.rank100GapColor),
             _buildCompactStat(
-                'R200', top200Gap.toString(), AppTheme.rank200GapColor),
+                'R200',
+                top200Gap.abs().toString(),
+                top200Gap > 0
+                    ? AppTheme.healthyColor
+                    : AppTheme.rank200GapColor),
+            _buildCompactDelta(data),
           ],
         ),
       );
@@ -133,33 +155,30 @@ class NetworkGapsChart extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  isRank1 ? Icons.emoji_events : Icons.trending_up,
-                  size: 14,
-                  color: isRank1 ? AppTheme.goldColor : AppTheme.rank1GapColor,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'CREDITS TO RANK_1',
+                Text(
+                  'DISTANCE',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: isRank1
+                        ? AppTheme.healthyColor
+                        : AppTheme.rank1GapColor,
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isRank1
-                        ? AppTheme.healthyColor.withValues(alpha: 0.15)
-                        : AppTheme.rank1GapColor.withValues(alpha: 0.15),
+                    color: (isRank1
+                            ? AppTheme.healthyColor
+                            : AppTheme.rank1GapColor)
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    latestGap.abs().toString(),
+                    '${latestGap.abs()}',
                     style: TextStyle(
                       color: isRank1
                           ? AppTheme.healthyColor
@@ -185,24 +204,9 @@ class NetworkGapsChart extends ConsumerWidget {
               },
             ),
           ),
-          // Time window indicator for historical data (hidden in compact mode)
-          if (!compactMode && data.length >= 2)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.cardBackgroundColor,
-                borderRadius: BorderRadius.circular(3),
-                border: Border.all(color: AppTheme.borderColor, width: 1),
-              ),
-              child: Text(
-                _formatTimeRange(data.first.timestamp, data.last.timestamp),
-                style: const TextStyle(
-                  color: AppTheme.secondaryTextColor,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          const SizedBox(width: 12),
+          // Delta label (change from start to end)
+          _buildDeltaLabel(data),
         ],
       ),
     );
@@ -234,10 +238,56 @@ class NetworkGapsChart extends ConsumerWidget {
     );
   }
 
+  Widget _buildCompactDelta(List<ValidatorSnapshot> dataPoints) {
+    if (dataPoints.length < 2) return const SizedBox.shrink();
+
+    // Fast path: just use first and last without outlier removal
+    final firstValue = dataPoints.first.gapToRank1.abs();
+    final lastValue = dataPoints.last.gapToRank1.abs();
+    final delta = lastValue - firstValue;
+
+    const color = Color(0xFF00E5FF); // Neon cyan
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Δ',
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${delta >= 0 ? '+' : ''}$delta',
+          style: const TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildChartContent(List<ValidatorSnapshot> dataPoints,
       ChartTimeRange selectedRange, WidgetRef ref, bool compactMode) {
     if (dataPoints.isEmpty) {
       return _buildEmptyState();
+    }
+
+    // Determine line color based on current rank
+    final currentRank = dataPoints.last.rank;
+    Color lineColor;
+    if (currentRank <= 100) {
+      lineColor = AppTheme.rankTop100Color; // Green
+    } else if (currentRank <= 200) {
+      lineColor = AppTheme.rankTop200Color; // Dark blue
+    } else {
+      lineColor = AppTheme.rankOutsideColor; // Gray
     }
 
     final rank1Spots = <FlSpot>[];
@@ -262,253 +312,405 @@ class NetworkGapsChart extends ConsumerWidget {
     final minGap = allGaps.reduce((a, b) => a < b ? a : b).toDouble();
     final maxGap = allGaps.reduce((a, b) => a > b ? a : b).toDouble();
 
+    // Grafana-style proportional padding: 10% of data range (Mode 3)
+    final delta = maxGap - minGap;
+
+    // Handle flat data (all values identical)
+    final effectiveDelta =
+        delta == 0 ? (minGap == 0 ? 1.0 : minGap * 0.1) : delta;
+
+    // Apply 10% proportional padding to delta
+    final yMin = ((minGap - effectiveDelta * 0.1).clamp(0.0, double.infinity))
+        .floorToDouble();
+    final yMax = (maxGap + effectiveDelta * 0.1).ceilToDouble();
+
+    // Calculate intervals based on actual data range, not padded range
     final dataRange = maxGap - minGap;
-    final paddingFactor = 0.12;
-    final verticalPadding = dataRange > 0 ? dataRange * paddingFactor : 15.0;
-
-    final yMin = (minGap - verticalPadding).clamp(0.0, double.infinity);
-    final yMax = maxGap + verticalPadding;
-
-    // Dynamic grid intervals based on range
-    final range = yMax - yMin;
-    final gridInterval = _calculateGridInterval(range);
+    final gridInterval =
+        (_calculateGridInterval(dataRange > 0 ? dataRange : effectiveDelta))
+            .clamp(1.0, double.infinity);
     // Adaptive label spacing: fewer labels for small ranges, more for large ranges
-    final labelInterval = range < 100 ? gridInterval * 2 : gridInterval * 3;
+    final labelInterval = dataRange < 100 ? gridInterval * 2 : gridInterval * 3;
 
     return Semantics(
       label: _buildChartSemanticDescription(dataPoints),
       readOnly: true,
       child: RepaintBoundary(
-        child: Stack(
-          children: [
-            LineChart(
-              LineChartData(
-                clipData: const FlClipData.all(),
-                extraLinesData: ExtraLinesData(
-                  verticalLines: _buildAlertMarkers(dataPoints),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: true,
-                  horizontalInterval: gridInterval, // 100 unit grid spacing
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: AppTheme.backgroundElevated,
-                      strokeWidth: 1,
-                    );
-                  },
-                  getDrawingVerticalLine: (value) {
-                    return FlLine(
-                      color: AppTheme.backgroundElevated,
-                      strokeWidth: 1,
-                    );
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 60,
-                      interval:
-                          labelInterval, // 200 unit label spacing to prevent overlap
-                      getTitlesWidget: (value, meta) {
-                        // Display positive gap values
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            value.toInt().toString(),
-                            textAlign: TextAlign.right,
-                            style: const TextStyle(
-                              color: AppTheme.textQuaternary,
-                              fontSize: 10,
-                            ),
-                          ),
-                        );
-                      },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                LineChart(
+                  LineChartData(
+                    clipData: const FlClipData.all(),
+                    extraLinesData: ExtraLinesData(
+                      verticalLines: _buildAlertMarkers(dataPoints),
                     ),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      // Adaptive label count: fewer labels in compact mode to prevent overlap
-                      interval:
-                          (rank1Spots.last.x - 0) / (compactMode ? 6 : 16),
-                      getTitlesWidget: (value, meta) {
-                        // value is already timestamp offset in seconds from baseTimestamp
-                        final xSeconds = value +
-                            (dataPoints.first.timestamp.millisecondsSinceEpoch /
-                                1000);
-                        final timestamp = DateTime.fromMillisecondsSinceEpoch(
-                            (xSeconds * 1000).toInt());
-
-                        // Edge collision prevention: skip labels too close to time borders
-                        final totalDuration = rank1Spots.last.x;
-                        final edgeThreshold = totalDuration * 0.05;
-                        if (value < edgeThreshold ||
-                            value > totalDuration - edgeThreshold) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final label = _formatTimeAxisLabel(
-                            timestamp,
-                            dataPoints.first.timestamp,
-                            dataPoints.last.timestamp);
-
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            label,
-                            style: const TextStyle(
-                              color: AppTheme.textQuaternary,
-                              fontSize: 10,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(
-                  show: true,
-                  border: Border.all(
-                    color: AppTheme.borderSubtle,
-                    width: 1,
-                  ),
-                ),
-                minX: 0,
-                maxX: rank1Spots.isNotEmpty ? rank1Spots.last.x : 0,
-                minY: yMin, // Lower gap values at bottom
-                maxY: yMax, // Higher gap values at top
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: rank1Spots,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    preventCurveOverShooting: true,
-                    color: AppTheme.ourValidatorColor,
-                    barWidth: 1.2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: selectedRange == ChartTimeRange.cypherblade,
-                      getDotPainter: (spot, percent, barData, index) {
-                        if (spot.y == 0) {
-                          return FlDotCirclePainter(
-                            radius: 2.5,
-                            color: AppTheme.goldColor,
-                            strokeWidth: 1.2,
-                            strokeColor:
-                                AppTheme.goldColor.withValues(alpha: 0.5),
-                          );
-                        }
-                        return FlDotCirclePainter(
-                          radius: 1.5,
-                          color: AppTheme.ourValidatorColor,
-                          strokeWidth: 0,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show:
-                          false, // Disabled for line-only view (Grafana-style)
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppTheme.ourValidatorColor.withValues(alpha: 0.3),
-                          AppTheme.ourValidatorColor.withValues(alpha: 0.05),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                lineTouchData: LineTouchData(
-                  enabled: true,
-                  getTouchedSpotIndicator: (barData, spotIndexes) {
-                    return spotIndexes.map((index) {
-                      return TouchedSpotIndicatorData(
-                        FlLine(
-                          color: Colors.white.withValues(alpha: 0.3),
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: true,
+                      horizontalInterval: gridInterval, // 100 unit grid spacing
+                      getDrawingHorizontalLine: (value) {
+                        return FlLine(
+                          color: AppTheme.backgroundElevated,
                           strokeWidth: 1,
-                        ),
-                        FlDotData(
-                          show: true,
-                          getDotPainter: (spot, percent, barData, index) {
-                            return FlDotCirclePainter(
-                              radius: 4,
-                              color: Colors.white,
-                              strokeWidth: 1,
-                              strokeColor: AppTheme.ourValidatorColor,
+                        );
+                      },
+                      getDrawingVerticalLine: (value) {
+                        return FlLine(
+                          color: AppTheme.backgroundElevated,
+                          strokeWidth: 1,
+                        );
+                      },
+                    ),
+                    titlesData: FlTitlesData(
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 60,
+                          interval:
+                              labelInterval, // 200 unit label spacing to prevent overlap
+                          getTitlesWidget: (value, meta) {
+                            // Display positive gap values
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Text(
+                                value.toInt().toString(),
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  color: AppTheme.textQuaternary,
+                                  fontSize: 10,
+                                ),
+                              ),
                             );
                           },
                         ),
-                      );
-                    }).toList();
-                  },
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) =>
-                        AppTheme.backgroundElevated,
-                    tooltipPadding: const EdgeInsets.all(8),
-                    tooltipBorder: const BorderSide(color: Colors.transparent),
-                    getTooltipItems: (touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        // Find the datapoint closest to the x-value (timestamp-based)
-                        final baseTime =
-                            dataPoints.first.timestamp.millisecondsSinceEpoch /
-                                1000;
-                        int closestIndex = 0;
-                        double minDiff = double.infinity;
-                        for (int i = 0; i < dataPoints.length; i++) {
-                          final pointTime =
-                              dataPoints[i].timestamp.millisecondsSinceEpoch /
-                                  1000;
-                          final diff = (pointTime - baseTime - spot.x).abs();
-                          if (diff < minDiff) {
-                            minDiff = diff;
-                            closestIndex = i;
-                          }
-                        }
+                      ),
+                      rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 30,
+                          // Adaptive label count: fewer labels in compact mode to prevent overlap
+                          interval:
+                              (rank1Spots.last.x - 0) / (compactMode ? 6 : 16),
+                          getTitlesWidget: (value, meta) {
+                            // value is already timestamp offset in seconds from baseTimestamp
+                            final xSeconds = value +
+                                (dataPoints.first.timestamp
+                                        .millisecondsSinceEpoch /
+                                    1000);
+                            final timestamp =
+                                DateTime.fromMillisecondsSinceEpoch(
+                                    (xSeconds * 1000).toInt());
 
-                        if (closestIndex < 0 ||
-                            closestIndex >= dataPoints.length) {
-                          return null;
-                        }
+                            // Edge collision prevention: skip labels too close to time borders
+                            final totalDuration = rank1Spots.last.x;
+                            final edgeThreshold = totalDuration * 0.05;
+                            if (value < edgeThreshold ||
+                                value > totalDuration - edgeThreshold) {
+                              return const SizedBox.shrink();
+                            }
 
-                        final snapshot = dataPoints[closestIndex];
-                        final gap = snapshot.gapToRank1;
-                        final time =
-                            '${snapshot.timestamp.hour.toString().padLeft(2, '0')}:${snapshot.timestamp.minute.toString().padLeft(2, '0')}:${snapshot.timestamp.second.toString().padLeft(2, '0')}';
+                            final label = _formatTimeAxisLabel(
+                                timestamp,
+                                dataPoints.first.timestamp,
+                                dataPoints.last.timestamp);
 
-                        return LineTooltipItem(
-                          'Gap: $gap\nPosition #${snapshot.rank}\n$time',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                label,
+                                style: const TextStyle(
+                                  color: AppTheme.textQuaternary,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    borderData: FlBorderData(
+                      show: true,
+                      border: Border.all(
+                        color: AppTheme.borderSubtle,
+                        width: 1,
+                      ),
+                    ),
+                    minX: 0,
+                    maxX: rank1Spots.isNotEmpty ? rank1Spots.last.x : 0,
+                    minY: yMin, // Lower gap values at bottom
+                    maxY: yMax, // Higher gap values at top
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: rank1Spots,
+                        isCurved: false,
+                        color: lineColor,
+                        barWidth: 1.2,
+                        isStrokeCapRound: true,
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, barData, index) {
+                            // Highlight the last point (current moment) with a larger, pulsing dot
+                            final isLastPoint = index == rank1Spots.length - 1;
+
+                            if (isLastPoint) {
+                              return FlDotCirclePainter(
+                                radius: 4.5,
+                                color: lineColor,
+                                strokeWidth: 2.0,
+                                strokeColor:
+                                    Colors.white.withValues(alpha: 0.9),
+                              );
+                            }
+
+                            // Show dots for all points in cypherblade mode
+                            if (selectedRange == ChartTimeRange.cypherblade) {
+                              if (spot.y == 0) {
+                                return FlDotCirclePainter(
+                                  radius: 2.5,
+                                  color: AppTheme.goldColor,
+                                  strokeWidth: 1.2,
+                                  strokeColor:
+                                      AppTheme.goldColor.withValues(alpha: 0.5),
+                                );
+                              }
+                              return FlDotCirclePainter(
+                                radius: 1.5,
+                                color: lineColor,
+                                strokeWidth: 0,
+                              );
+                            }
+
+                            // Hide intermediate dots in historical views (cleaner line view)
+                            return FlDotCirclePainter(
+                              radius: 0,
+                              color: Colors.transparent,
+                            );
+                          },
+                        ),
+                        belowBarData: BarAreaData(
+                          show:
+                              false, // Disabled for line-only view (Grafana-style)
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              AppTheme.ourValidatorColor.withValues(alpha: 0.3),
+                              AppTheme.ourValidatorColor
+                                  .withValues(alpha: 0.05),
+                            ],
                           ),
-                        );
-                      }).toList();
-                    },
+                        ),
+                      ),
+                    ],
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      getTouchedSpotIndicator: (barData, spotIndexes) {
+                        return spotIndexes.map((index) {
+                          return TouchedSpotIndicatorData(
+                            FlLine(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              strokeWidth: 1,
+                            ),
+                            FlDotData(
+                              show: true,
+                              getDotPainter: (spot, percent, barData, index) {
+                                return FlDotCirclePainter(
+                                  radius: 4,
+                                  color: Colors.white,
+                                  strokeWidth: 1,
+                                  strokeColor: lineColor,
+                                );
+                              },
+                            ),
+                          );
+                        }).toList();
+                      },
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (touchedSpot) =>
+                            AppTheme.backgroundElevated,
+                        tooltipPadding: const EdgeInsets.all(8),
+                        tooltipBorder:
+                            const BorderSide(color: Colors.transparent),
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            // Find the datapoint closest to the x-value (timestamp-based)
+                            final baseTime = dataPoints
+                                    .first.timestamp.millisecondsSinceEpoch /
+                                1000;
+                            int closestIndex = 0;
+                            double minDiff = double.infinity;
+                            for (int i = 0; i < dataPoints.length; i++) {
+                              final pointTime = dataPoints[i]
+                                      .timestamp
+                                      .millisecondsSinceEpoch /
+                                  1000;
+                              final diff =
+                                  (pointTime - baseTime - spot.x).abs();
+                              if (diff < minDiff) {
+                                minDiff = diff;
+                                closestIndex = i;
+                              }
+                            }
+
+                            if (closestIndex < 0 ||
+                                closestIndex >= dataPoints.length) {
+                              return null;
+                            }
+
+                            final snapshot = dataPoints[closestIndex];
+                            final gap = snapshot.gapToRank1;
+                            final time =
+                                '${snapshot.timestamp.hour.toString().padLeft(2, '0')}:${snapshot.timestamp.minute.toString().padLeft(2, '0')}:${snapshot.timestamp.second.toString().padLeft(2, '0')}';
+
+                            return LineTooltipItem(
+                              'Gap: $gap\nPosition #${snapshot.rank}\n$time',
+                              const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ), // Close LineChart
-            if (!compactMode)
-              Positioned(
-                top: 8,
-                left: 70,
-                child: _buildAlertLegend(),
-              ),
-          ],
-        ), // Close Stack
+                ), // Close LineChart
+                if (!compactMode)
+                  Positioned(
+                    top: 8,
+                    left: 70,
+                    child: _buildAlertLegend(),
+                  ),
+              ],
+            );
+          },
+        ), // Close LayoutBuilder
       ), // Close RepaintBoundary
     ); // Close Semantics
+  }
+
+  /// Build compact delta label for header
+  Widget _buildDeltaLabel(List<ValidatorSnapshot> dataPoints) {
+    if (dataPoints.length < 2) return const SizedBox(width: 80);
+
+    // Optimize: Skip expensive outlier removal for small datasets or when variance is low
+    final allValues = dataPoints.map((s) => s.gapToRank1.abs()).toList();
+
+    int delta;
+    if (allValues.length < 10) {
+      // Fast path for small datasets: just use first/last
+      delta = allValues.last - allValues.first;
+    } else {
+      // For larger datasets: check if outlier removal is needed
+      final firstValue = allValues.first;
+      final lastValue = allValues.last;
+      final range = allValues.reduce((a, b) => a > b ? a : b) -
+          allValues.reduce((a, b) => a < b ? a : b);
+
+      // If data is stable (small range relative to values), skip outlier removal
+      if (range < (firstValue * 0.1)) {
+        delta = lastValue - firstValue;
+      } else {
+        // Only do full outlier removal when data is volatile
+        final cleanedValues = _removeSpikeOutliers(allValues);
+        if (cleanedValues.length < 2) return const SizedBox(width: 80);
+        delta = cleanedValues.last - cleanedValues.first;
+      }
+    }
+
+    final Color trendColor = const Color(0xFF00E5FF); // Neon cyan
+
+    return SizedBox(
+      width: 80,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.cardBackgroundColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: trendColor.withValues(alpha: 0.15),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: trendColor.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Δ',
+              style: TextStyle(
+                color: trendColor,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: trendColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${delta >= 0 ? '+' : ''}$delta',
+                style: TextStyle(
+                  color: trendColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Remove outlier spikes using statistical bounds (mean ± 2*std)
+  /// Same logic as gap_trend_indicators.dart sparkline smoothing
+  List<int> _removeSpikeOutliers(List<int> values) {
+    if (values.length < 5) return values;
+
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final variance =
+        values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) /
+            values.length;
+    final std = sqrt(variance);
+
+    final lowerBound = mean - 2.0 * std;
+    final upperBound = mean + 2.0 * std;
+
+    final cleaned = <int>[];
+    int lastValid = mean.round();
+
+    for (final value in values) {
+      if (value >= lowerBound && value <= upperBound) {
+        cleaned.add(value);
+        lastValid = value;
+      } else {
+        cleaned.add(lastValid); // Replace outlier with last valid
+      }
+    }
+
+    return cleaned;
   }
 
   Widget _buildEmptyState() {
@@ -672,50 +874,6 @@ class NetworkGapsChart extends ConsumerWidget {
         );
       },
     );
-  }
-
-  /// Format time range for display in chart header
-  /// Shows duration for ranges < 1 hour, date+time for longer ranges
-  String _formatTimeRange(DateTime start, DateTime end) {
-    final duration = end.difference(start);
-
-    // For short durations (< 1 hour), show duration
-    if (duration.inHours < 1) {
-      if (duration.inMinutes < 1) {
-        return '${duration.inSeconds}s';
-      }
-      return '${duration.inMinutes}m';
-    }
-
-    // For longer durations, show start-end timestamps
-    final startTime =
-        '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
-    final endTime =
-        '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
-
-    // If same day, show only times
-    if (start.year == end.year &&
-        start.month == end.month &&
-        start.day == end.day) {
-      return '$startTime - $endTime';
-    }
-
-    // Different days: show date for start
-    final monthNames = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${monthNames[start.month - 1]} ${start.day}, $startTime - $endTime';
   }
 
   /// Calculate appropriate grid interval based on y-axis range
@@ -885,8 +1043,12 @@ class NetworkGapsChart extends ConsumerWidget {
 
       final currentForkEventId = events.fork.lastAlert?.eventId;
       final prevForkEventId = prevEvents?.fork.lastAlert?.eventId;
-      final forkTransition =
-          currentForkEventId != null && currentForkEventId != prevForkEventId;
+
+      // Real transition: event ID changes from one value to a DIFFERENT value
+      // Not a transition: null → something (happens when viewing new time range with old lastAlert)
+      final forkTransition = currentForkEventId != null &&
+          prevForkEventId != null &&
+          currentForkEventId != prevForkEventId;
 
       final criticalRecovery = prevEvents != null &&
           prevEvents.temporal.isCritical &&
@@ -953,7 +1115,7 @@ class NetworkGapsChart extends ConsumerWidget {
                 fontWeight: FontWeight.bold,
                 backgroundColor: AppTheme.backgroundDarker,
               ),
-              labelResolver: (line) => 'CYCLE',
+              labelResolver: (line) => 'EPOCH',
             ),
           ),
         );

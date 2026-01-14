@@ -36,25 +36,37 @@ class RankChart extends ConsumerWidget {
       return _buildEmptyState();
     }
 
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 800),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundDarker,
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: AppTheme.borderSubtle, width: 1),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(data, compactMode),
-          const Divider(height: 1, color: AppTheme.borderSubtle),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: _buildChartContent(data, selectedRange, ref),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Adapt padding for extreme layouts
+        final availableHeight = constraints.maxHeight;
+        final padding = availableHeight < 80 ? 4.0 : 12.0;
+
+        return Container(
+          constraints: const BoxConstraints(maxWidth: 800, minHeight: 120),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundDarker,
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(color: AppTheme.borderSubtle, width: 1),
+          ),
+          child: ClipRect(
+            child: Column(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                if (availableHeight >= 80) _buildHeader(data, compactMode),
+                if (availableHeight >= 80)
+                  const Divider(height: 1, color: AppTheme.borderSubtle),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: _buildChartContent(data, selectedRange, ref),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -133,7 +145,7 @@ class RankChart extends ConsumerWidget {
       return _buildEmptyState();
     }
 
-    // Use timestamp-based x-coordinates for proper time-series display
+    // Use timestamp-based x-coordinates with step interpolation for clean integer steps
     final rankSpots = <FlSpot>[];
     final baseTimestamp =
         dataPoints.first.timestamp.millisecondsSinceEpoch / 1000;
@@ -143,7 +155,15 @@ class RankChart extends ConsumerWidget {
       if (snapshot.rank > 0) {
         final xValue =
             (snapshot.timestamp.millisecondsSinceEpoch / 1000) - baseTimestamp;
-        rankSpots.add(FlSpot(xValue, snapshot.rank.toDouble()));
+        final currentRank = snapshot.rank.toDouble();
+
+        // Step interpolation: add vertical step before horizontal line
+        if (rankSpots.isNotEmpty && rankSpots.last.y != currentRank) {
+          // Add intermediate point at same x, new y (vertical line)
+          rankSpots.add(FlSpot(xValue, currentRank));
+        }
+
+        rankSpots.add(FlSpot(xValue, currentRank));
       }
     }
 
@@ -155,22 +175,31 @@ class RankChart extends ConsumerWidget {
     final minRank = allRanks.reduce((a, b) => a < b ? a : b);
     final maxRank = allRanks.reduce((a, b) => a > b ? a : b);
 
-    final rawPadding = (maxRank - minRank) * 0.3;
-    final padding = rawPadding < 2.0 ? 2.0 : rawPadding;
-    final yMin = (minRank - padding).clamp(1.0, double.infinity);
-    final yMax = maxRank + padding;
+    // Grafana-style proportional padding: 10% of data range (Mode 3)
+    final delta = maxRank - minRank;
 
-    final range = yMax - yMin;
+    // Handle flat data (all values identical)
+    final effectiveDelta = delta == 0 ? (minRank * 0.1) : delta;
+
+    // Apply 10% proportional padding to delta
+    final yMin = ((minRank - effectiveDelta * 0.1).clamp(1.0, double.infinity))
+        .floorToDouble();
+    final yMax = (maxRank + effectiveDelta * 0.1).ceilToDouble();
+
+    // Calculate interval based on actual data range, not padded range
+    final dataRange = maxRank - minRank;
     double interval;
-    if (range <= 10) {
+    if (dataRange <= 5) {
+      interval = 1.0;
+    } else if (dataRange <= 10) {
       interval = 2.0;
-    } else if (range <= 20) {
+    } else if (dataRange <= 20) {
       interval = 5.0;
-    } else if (range <= 50) {
+    } else if (dataRange <= 50) {
       interval = 10.0;
-    } else if (range <= 100) {
+    } else if (dataRange <= 100) {
       interval = 20.0;
-    } else if (range <= 200) {
+    } else if (dataRange <= 200) {
       interval = 50.0;
     } else {
       interval = 100.0;
@@ -182,25 +211,45 @@ class RankChart extends ConsumerWidget {
       child: RepaintBoundary(
         child: LineChart(
           LineChartData(
+            clipData: const FlClipData.all(),
             minY: yMin,
             maxY: yMax,
             lineBarsData: [
               LineChartBarData(
                 spots: rankSpots,
-                isCurved: true,
-                curveSmoothness: 0.25,
-                preventCurveOverShooting: true,
+                isCurved: false,
                 isStrokeCapRound: true,
                 isStrokeJoinRound: true,
                 color: _getRankColor(rankSpots.last.y.toInt()),
                 barWidth: 1.2,
                 dotData: FlDotData(
-                  show: selectedRange == ChartTimeRange.cypherblade,
+                  show: true,
                   getDotPainter: (spot, percent, barData, index) {
+                    // Highlight the last point (current moment) with a larger, pulsing dot
+                    final isLastPoint = index == rankSpots.length - 1;
+
+                    if (isLastPoint) {
+                      return FlDotCirclePainter(
+                        radius: 4.5,
+                        color: _getRankColor(spot.y.toInt()),
+                        strokeWidth: 2.0,
+                        strokeColor: Colors.white.withValues(alpha: 0.9),
+                      );
+                    }
+
+                    // Show dots for all points in cypherblade mode
+                    if (selectedRange == ChartTimeRange.cypherblade) {
+                      return FlDotCirclePainter(
+                        radius: 1.5,
+                        color: _getRankColor(spot.y.toInt()),
+                        strokeWidth: 0,
+                      );
+                    }
+
+                    // Hide intermediate dots in historical views
                     return FlDotCirclePainter(
-                      radius: 1.5,
-                      color: _getRankColor(spot.y.toInt()),
-                      strokeWidth: 0,
+                      radius: 0,
+                      color: Colors.transparent,
                     );
                   },
                 ),
@@ -299,7 +348,10 @@ class RankChart extends ConsumerWidget {
                 return FlLine(color: AppTheme.borderSubtle, strokeWidth: 1);
               },
             ),
-            borderData: FlBorderData(show: false),
+            borderData: FlBorderData(
+              show: true,
+              border: Border.all(color: AppTheme.borderSubtle, width: 1),
+            ),
             lineTouchData: LineTouchData(
               enabled: true,
               getTouchedSpotIndicator: (barData, spotIndexes) {

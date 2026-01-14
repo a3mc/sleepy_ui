@@ -737,7 +737,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             scale: 0.7,
             child: Switch(
               value: _useHttps,
-              onChanged: (value) => setState(() => _useHttps = value),
+              onChanged: (value) {
+                setState(() {
+                  _useHttps = value;
+                  // Auto-set port: 443 for HTTPS, 80 for HTTP (still editable)
+                  _portController.text = value ? '443' : '80';
+                });
+              },
               thumbColor: WidgetStateProperty.resolveWith<Color>(
                 (states) => states.contains(WidgetState.selected)
                     ? Color(0xFF00AAFF)

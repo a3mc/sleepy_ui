@@ -82,6 +82,7 @@ flutter:
   assets:
     - assets/icon/app_icon.png
     - assets/background_log.txt
+    - assets/moon.png
 
 # Flutter launcher icons configuration
 flutter_launcher_icons:

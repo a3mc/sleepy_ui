@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
@@ -29,6 +30,9 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  DateTime? _lastSnapshotTime;
+  final ValueNotifier<double> _secondsSinceUpdate = ValueNotifier(0.0);
+  Timer? _updateTimer;
 
   @override
   void initState() {
@@ -44,6 +48,15 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     );
 
     _controller.forward();
+
+    // Update timer every 100ms - smooth for user, 2x better than original 50ms
+    _updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (_lastSnapshotTime != null) {
+        _secondsSinceUpdate.value =
+            DateTime.now().difference(_lastSnapshotTime!).inMilliseconds /
+                1000.0;
+      }
+    });
   }
 
   @override
@@ -53,11 +66,22 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     if (widget.snapshots.length != oldWidget.snapshots.length) {
       _controller.forward(from: 0.7);
     }
+
+    // Check if we have a new snapshot by comparing timestamps
+    if (widget.snapshots.isNotEmpty) {
+      final currentTime = widget.snapshots.last.timestamp;
+      if (_lastSnapshotTime != currentTime) {
+        _lastSnapshotTime = currentTime;
+        _secondsSinceUpdate.value = 0; // Reset counter
+      }
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _updateTimer?.cancel();
+    _secondsSinceUpdate.dispose();
     super.dispose();
   }
 
@@ -101,30 +125,41 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           return Semantics(
             label: _buildSemanticDescription(),
             readOnly: true,
-            child: RepaintBoundary(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CustomPaint(
-                    size: size,
-                    painter: CircularBladePainter(
-                      snapshots: widget.snapshots,
-                      animation: _animation,
-                      rank: widget.rank,
-                    ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                RepaintBoundary(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: size,
+                        painter: CircularBladePainter(
+                          snapshots: widget.snapshots,
+                          animation: _animation,
+                          rank: widget.rank,
+                        ),
+                      ),
+                      CustomPaint(
+                        size: size,
+                        painter: EventMarkerPainter(
+                          snapshots: widget.snapshots,
+                          innerRadius: eventMarkerStartRadius,
+                          ringSpacing: ringSpacing,
+                          ringThickness: ringThickness,
+                        ),
+                      ),
+                    ],
                   ),
-                  CustomPaint(
-                    size: size,
-                    painter: EventMarkerPainter(
-                      snapshots: widget.snapshots,
-                      innerRadius: eventMarkerStartRadius,
-                      ringSpacing: ringSpacing,
-                      ringThickness: ringThickness,
-                    ),
-                  ),
-                  _buildCenterInfo(context, radius),
-                ],
-              ),
+                ),
+                _buildCenterInfo(context, radius),
+                // Timer widget at bottom-right corner
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: _buildTimerWidget(),
+                ),
+              ],
             ),
           );
         },
@@ -169,13 +204,19 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
     final statusFontSize = (radius * 0.04).clamp(6.0, 12.0); // 4% of radius
     final verticalSpacing = (radius * 0.025).clamp(3.0, 8.0); // 2.5% of radius
 
-    // Determine text color based on rank (black for gray background when rank > 200)
+    // Determine text color based on rank tier
     Color rankTextColor = Colors.white;
     if (widget.rank != null) {
       final cleanRank = widget.rank!.replaceAll(RegExp(r'[^\d]'), '');
       final rankNum = int.tryParse(cleanRank);
-      if (rankNum != null && rankNum > 200) {
-        rankTextColor = Colors.black;
+      if (rankNum != null) {
+        if (rankNum <= 100) {
+          rankTextColor = AppTheme.rankTop100Color; // Green
+        } else if (rankNum <= 200) {
+          rankTextColor = AppTheme.rankTop200Color; // Dark blue
+        } else {
+          rankTextColor = AppTheme.rankOutsideColor; // Gray
+        }
       }
     }
 
@@ -183,13 +224,31 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.rank != null)
-          Text(
-            widget.rank!,
-            style: theme.textTheme.displayMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: rankTextColor,
-              fontSize: rankFontSize,
-            ),
+          Stack(
+            children: [
+              // Subtle dark stroke matching app theme
+              Text(
+                widget.rank!,
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: rankFontSize,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 3.0
+                    ..color = AppTheme
+                        .backgroundDarker, // Use app's dark background color
+                ),
+              ),
+              // Fill layer (color-coded rank)
+              Text(
+                widget.rank!,
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: rankTextColor,
+                  fontSize: rankFontSize,
+                ),
+              ),
+            ],
           ),
         SizedBox(height: verticalSpacing),
         if (widget.alertStatus != null && widget.alertColor != null)
@@ -282,6 +341,70 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTimerWidget() {
+    final theme = Theme.of(context);
+
+    return ValueListenableBuilder<double>(
+      valueListenable: _secondsSinceUpdate,
+      builder: (context, seconds, child) {
+        // Format: "0.0s" with 1 decimal precision
+        final timeText = seconds.toStringAsFixed(1);
+
+        // Color based on freshness: green < 3s, blue < 5s, red >= 5s
+        Color timeColor;
+        if (seconds < 3.0) {
+          timeColor = AppTheme.rankTop100Color; // Green - fresh
+        } else if (seconds < 5.0) {
+          timeColor = AppTheme.rankTop200Color; // Blue - ok
+        } else {
+          timeColor = AppTheme.ringCriticalColor; // Red - stale
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundDarker,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: timeColor.withValues(alpha: 0.5),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: timeColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: timeColor.withValues(alpha: 0.5),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${timeText}s',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: timeColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

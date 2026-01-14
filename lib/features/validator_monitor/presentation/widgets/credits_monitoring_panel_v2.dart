@@ -135,126 +135,130 @@ class _CreditsMonitoringPanelV2State
         animation: Listenable.merge(
             [_pulseAnimation, _scanlineAnimation, _glitchController]),
         builder: (context, child) {
-          return Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(2),
-                  border: Border.all(
-                    color: _getBorderColor(fork.phase, _pulseAnimation.value),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _getBorderColor(fork.phase, _pulseAnimation.value)
-                          .withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      spreadRadius: 2,
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: Stack(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(
+                      color: _getBorderColor(fork.phase, _pulseAnimation.value),
+                      width: 2,
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: Stack(
-                    children: [
-                      CustomPaint(
-                        painter: HexGridPainter(
-                          animation: _scanlineAnimation.value,
-                          color: _getBorderColor(
-                              fork.phase, _pulseAnimation.value),
-                        ),
-                        child: Container(),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            _getBorderColor(fork.phase, _pulseAnimation.value)
+                                .withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
                       ),
-                      Positioned(
-                        top: _scanlineAnimation.value * 250,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          height: 2,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                Colors.transparent,
-                                _getBorderColor(fork.phase, 1.0)
-                                    .withValues(alpha: 0.6),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (hasForkActivity)
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: Opacity(
-                              opacity: 0.15,
-                              child: Text(
-                                _matrixChars,
-                                style: TextStyle(
-                                  color: _getBorderColor(fork.phase, 1.0),
-                                  fontSize: 8,
-                                  fontFamily: 'monospace',
-                                  height: 1.2,
-                                ),
-                                maxLines: 20,
-                                overflow: TextOverflow.clip,
-                              ),
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHolographicHeader(
-                                fork, _pulseAnimation.value),
-                            const SizedBox(height: 16),
-                            if (hasEpochBoundary)
-                              _buildEpochBoundary(events.epochBoundary)
-                            else if (hasForkActivity)
-                              _buildActiveDetection(
-                                  fork, _scanlineAnimation.value)
-                            else if (inCooldown)
-                              _buildCooldownState(fork, _pulseAnimation.value)
-                            else
-                              _buildHolographicIdle(
-                                  fork, _pulseAnimation.value),
-                          ],
-                        ),
-                      ),
-                      if (_glitchController.isAnimating)
-                        Positioned.fill(
-                          child: Opacity(
-                            opacity: (1.0 - _glitchController.value) * 0.8,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    _getBorderColor(fork.phase, 1.0)
-                                        .withValues(alpha: 0.3),
-                                    Colors.transparent,
-                                    _getBorderColor(fork.phase, 1.0)
-                                        .withValues(alpha: 0.3),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ..._buildCornerAccents(
-                          _getBorderColor(fork.phase, _pulseAnimation.value)),
                     ],
                   ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: Stack(
+                      children: [
+                        CustomPaint(
+                          painter: HexGridPainter(
+                            animation: _scanlineAnimation.value,
+                            color: _getBorderColor(
+                                fork.phase, _pulseAnimation.value),
+                          ),
+                          child: Container(),
+                        ),
+                        Positioned(
+                          top: _scanlineAnimation.value * 250,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Colors.transparent,
+                                  _getBorderColor(fork.phase, 1.0)
+                                      .withValues(alpha: 0.6),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (hasForkActivity)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Opacity(
+                                opacity: 0.15,
+                                child: Text(
+                                  _matrixChars,
+                                  style: TextStyle(
+                                    color: _getBorderColor(fork.phase, 1.0),
+                                    fontSize: 8,
+                                    fontFamily: 'monospace',
+                                    height: 1.2,
+                                  ),
+                                  maxLines: 20,
+                                  overflow: TextOverflow.clip,
+                                ),
+                              ),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHolographicHeader(
+                                  fork, _pulseAnimation.value),
+                              const SizedBox(height: 16),
+                              if (hasEpochBoundary)
+                                _buildEpochBoundary(events.epochBoundary)
+                              else if (hasForkActivity)
+                                _buildActiveDetection(
+                                    fork, _scanlineAnimation.value)
+                              else if (inCooldown)
+                                _buildCooldownState(fork, _pulseAnimation.value)
+                              else
+                                _buildHolographicIdle(
+                                    fork, _pulseAnimation.value),
+                            ],
+                          ),
+                        ),
+                        if (_glitchController.isAnimating)
+                          Positioned.fill(
+                            child: Opacity(
+                              opacity: (1.0 - _glitchController.value) * 0.8,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      _getBorderColor(fork.phase, 1.0)
+                                          .withValues(alpha: 0.3),
+                                      Colors.transparent,
+                                      _getBorderColor(fork.phase, 1.0)
+                                          .withValues(alpha: 0.3),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ..._buildCornerAccents(
+                            _getBorderColor(fork.phase, _pulseAnimation.value)),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
