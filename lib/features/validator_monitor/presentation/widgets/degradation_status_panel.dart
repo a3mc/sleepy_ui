@@ -52,19 +52,16 @@ class DegradationStatusPanel extends StatelessWidget {
             ],
           ),
           padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(activeDetections),
-                const SizedBox(height: 16),
-                ...activeDetections.map((detection) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: _buildDetectionItem(detection),
-                    )),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(activeDetections),
+              ...activeDetections.map((detection) => 
+                _buildDetectionItem(detection),
+              ),
+            ],
           ),
         ),
       ),
@@ -161,72 +158,74 @@ class DegradationStatusPanel extends StatelessWidget {
   }
 
   Widget _buildDetectionItem(_Detection detection) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Single-line compact layout: Label and Status on same line
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left side: dot + label
-            Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: detection.color,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: detection.color.withValues(alpha: 0.5),
-                        blurRadius: 4,
-                        spreadRadius: 0.5,
-                      ),
-                    ],
-                  ),
+    // Wrapped item with subtle background for visual separation
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A), // Subtle background
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: detection.color.withValues(alpha: 0.25),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // First line: • Label: [████████████]
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Dot indicator
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: detection.color,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: detection.color.withValues(alpha: 0.5),
+                      blurRadius: 4,
+                      spreadRadius: 0.5,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  detection.label,
+              ),
+              const SizedBox(width: 8),
+              // Label
+              SizedBox(
+                width: 55,
+                child: Text(
+                  '${detection.label}:',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
-            // Right side: status text
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                detection.statusText,
-                style: TextStyle(
-                  color: detection.color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.2,
-                ),
-                textAlign: TextAlign.right,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4), // Reduced from 8
-        _buildProgressBar(detection),
-        if (detection.subtitle != null) ...[
-          const SizedBox(height: 3), // Reduced from 4
-          Text(
-            detection.subtitle!,
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 10, // Reduced from 11
+              const SizedBox(width: 8),
+              // Progress bar (takes remaining space)
+              Expanded(
+                child: _buildProgressBar(detection),
+              ),
+            ],
+          ),
+          // Second line: Status text
+          Padding(
+            padding: const EdgeInsets.only(left: 69, top: 1),
+            child: Text(
+              detection.statusText,
+              style: TextStyle(
+                color: detection.color,
+                fontSize: 9,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
-      ],
+      ),
     );
   }
 
@@ -392,30 +391,24 @@ class _Detection {
     required String level,
     required this.resetThreshold,
     this.isActive = true,
-  })  : color = isActive
-            ? _getTemporalColor(
-                count, warningThreshold, criticalThreshold, level)
-            : const Color(0xFF404040),
+  })  : color = _getTemporalColor(
+            count, warningThreshold, criticalThreshold, level),
         progress = count / criticalThreshold,
-        statusText = isActive
-            ? _getTemporalStatus(
-                count, warningThreshold, criticalThreshold, level)
-            : 'Healthy',
+        statusText = _getTemporalStatus(
+            count, warningThreshold, criticalThreshold, level),
         subtitle = isActive
             ? _getTemporalSubtitle(count, warningThreshold, criticalThreshold,
                 level, resetThreshold)
             : 'No degradation detected',
-        severity = isActive
-            ? _getTemporalSeverity(count, warningThreshold, criticalThreshold)
-            : 0,
+        severity = _getTemporalSeverity(count, warningThreshold, criticalThreshold),
         thresholdMarkers = [
           _ThresholdMarker(
             position: warningThreshold / criticalThreshold,
-            color: isActive ? const Color(0xFFFF6600) : const Color(0xFF303030),
+            color: count > 0 ? const Color(0xFFFF6600) : const Color(0xFF303030),
           ),
           _ThresholdMarker(
             position: 1.0,
-            color: isActive ? const Color(0xFFFF0000) : const Color(0xFF303030),
+            color: count > 0 ? const Color(0xFFFF0000) : const Color(0xFF303030),
           ),
         ];
 
@@ -445,12 +438,13 @@ class _Detection {
 
   static Color _getTemporalColor(
       int count, int warning, int critical, String level) {
-    if (level == 'Critical') return const Color(0xFFFF0000);
-    if (level == 'Warning') return const Color(0xFFFF6600);
+    if (level == 'Critical') return const Color(0xFFFF0000); // Red
+    if (level == 'Warning') return const Color(0xFFFF6600); // Orange
+    if (count == 0) return const Color(0xFF4CAF50); // Green when healthy
     if (count >= warning * 0.8) {
-      return const Color(0xFFFFAA00); // Approaching warning
+      return const Color(0xFFFFAA00); // Yellow - approaching warning
     }
-    return const Color(0xFFAAAAAA);
+    return const Color(0xFFAAAAAA); // Gray - accumulating but low
   }
 
   static String _getTemporalStatus(
@@ -474,7 +468,7 @@ class _Detection {
   static int _getTemporalSeverity(int count, int warning, int critical) {
     if (count >= critical) return 3;
     if (count >= warning) return 2;
-    return 1;
+    return 0; // Healthy state
   }
 }
 

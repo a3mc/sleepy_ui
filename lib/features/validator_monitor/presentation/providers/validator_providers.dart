@@ -466,7 +466,7 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
           _debugLog(
               '[MARKER] � CYAN DOT (light blue) - [LOSS] CLEARED: ${prevFork.phase} → Idle (analysis complete: NO LOSS detected, false positive, no alert sent)');
           debugPrint(
-              '   [DEBUG] Loss event dot should now disappear from blade');
+              '   Loss event dot should now disappear from blade');
         } else if (fork.phase == 'RankSampling') {
           _debugLog(
               '[MARKER] [STARTED] BLUE DOT (dark blue) - [LOSS] RANK SAMPLING: ${prevFork.phase} → RankSampling (monitoring rank changes for confirmation) [loops=${fork.loopsSinceDetection}]');
