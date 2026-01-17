@@ -90,7 +90,7 @@ class AlertSoundService {
   /// Play warning sound
   Future<void> playWarning() async {
     if (!_isInitialized || _isMuted || _isLooping) return;
-    await _playSound('assets/sounds/warning.wav');
+    await _playSound('assets/sounds/warning.mp3');
   }
 
   /// Play critical loop
@@ -108,7 +108,7 @@ class AlertSoundService {
     if (!_isInitialized || _isMuted) return;
     await _stopCriticalLoop();
     await Future.delayed(const Duration(milliseconds: 100));
-    await _playSound('assets/sounds/recover.wav');
+    await _playSound('assets/sounds/recover.mp3');
     _criticalLoopSnoozed = false;
   }
 
@@ -161,7 +161,7 @@ class AlertSoundService {
     try {
       await _loopPlayer!.stop();
       _isLooping = true;
-      await _loopPlayer!.play(AssetSource('sounds/critical.wav'));
+      await _loopPlayer!.play(AssetSource('sounds/critical.mp3'));
     } catch (e) {
       debugPrint('Failed to start critical loop: $e');
       _isLooping = false;

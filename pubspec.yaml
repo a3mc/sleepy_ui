@@ -87,9 +87,9 @@ flutter:
     - assets/background_log.txt
     - assets/moon.png
     - assets/sounds/beep.wav
-    - assets/sounds/warning.wav
-    - assets/sounds/critical.wav
-    - assets/sounds/recover.wav
+    - assets/sounds/warning.mp3
+    - assets/sounds/critical.mp3
+    - assets/sounds/recover.mp3
 
 # Flutter launcher icons configuration
 flutter_launcher_icons:
