@@ -126,12 +126,20 @@ dart format --set-exit-if-changed .
 
 ## Platform Build Instructions
 
-Build proceres are LLM generated and maintained in separate documentation files:
+Build procedures are LLM generated and maintained in separate documentation files:
 
 - [docs/RELEASE_BUILD.md](docs/RELEASE_BUILD.md) - Build commands for all platforms
 - [docs/ANDROID_SETUP.md](docs/ANDROID_SETUP.md) - Android SDK configuration
 - [docs/MACOS_SETUP.md](docs/MACOS_SETUP.md) - Xcode setup
 - [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) - Visual Studio setup
+
+**Linux Prerequisites:**
+```bash
+# GStreamer required for audio playback (audioplayers plugin)
+sudo apt-get install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev  # Debian/Ubuntu
+sudo pacman -S gstreamer gst-plugins-base gst-plugins-good                  # Arch
+sudo dnf install gstreamer1-devel gstreamer1-plugins-base-devel             # Fedora
+```
 
 ---
 
@@ -143,6 +151,7 @@ Core dependencies (exact versions locked in pubspec.yaml):
 - `fl_chart: 0.69.0` - Chart rendering
 - `http: 1.2.2` - REST API
 - `flutter_secure_storage: 9.2.2` - Credential storage
+- `audioplayers: 6.1.0` - Alert sound playback
 - `intl: 0.19.0` - Date/time formatting
 
 All dependencies audited before inclusion. No version ranges permitted.

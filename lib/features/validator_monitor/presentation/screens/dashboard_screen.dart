@@ -26,6 +26,7 @@ import '../widgets/credits_monitoring_panel_v2.dart';
 import '../widgets/network_gaps_chart.dart';
 import '../widgets/rank_chart.dart';
 import '../widgets/connection_status_banner.dart';
+import '../providers/alert_sound_provider.dart';
 import '../../data/models/validator_snapshot.dart';
 import '../providers/time_range_provider.dart';
 
@@ -52,9 +53,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     super.initState();
 
     // Initialize keyboard focus node for desktop platforms (F11 fullscreen support)
+    // DEFENSIVE [UI-02]: Use null-coalescing to prevent theoretical double-creation
     if (!kIsWeb &&
         (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      _keyboardFocusNode = FocusNode();
+      _keyboardFocusNode ??= FocusNode();
     }
 
     // Initialize wake lock provider on Android (triggers auto-enable on first app launch)
@@ -432,6 +434,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                   ),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final soundServiceAsync =
+                        ref.watch(alertSoundServiceProvider);
+                    final isMuted = soundServiceAsync.when(
+                      data: (service) => service.isMuted,
+                      loading: () => false,
+                      error: (_, __) => false,
+                    );
+
+                    if (!isMuted) return const SizedBox.shrink();
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Icon(
+                        Icons.volume_off,
+                        size: 20,
+                        color: Color(0xFF00AAFF),
+                      ),
+                    );
+                  },
+                ),
                 Semantics(
                   label: 'Open settings',
                   button: true,
@@ -450,23 +474,61 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ]
             : compactMode
                 ? [
-                    // Compact mode: only status indicator (no text, just colored dot)
+                    // Compact mode: status dot and mute indicator
                     Padding(
                       padding: const EdgeInsets.only(right: 16.0),
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: statusColor.withValues(alpha: 0.5),
-                              blurRadius: 8,
-                              spreadRadius: 2,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: statusColor.withValues(alpha: 0.5),
+                                  blurRadius: 8,
+                                  spreadRadius: 2,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Mute indicator
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final soundServiceAsync =
+                                  ref.watch(alertSoundServiceProvider);
+                              final isMuted = soundServiceAsync.when(
+                                data: (service) => service.isMuted,
+                                loading: () => false,
+                                error: (_, __) => false,
+                              );
+
+                              if (!isMuted) return const SizedBox.shrink();
+
+                              return Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Color(0xFF00AAFF).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Color(0xFF00AAFF)
+                                        .withValues(alpha: 0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.volume_off,
+                                  size: 16,
+                                  color: Color(0xFF00AAFF),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ]
@@ -499,6 +561,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
+                          ),
+                          const SizedBox(width: 16),
+                          // Mute indicator
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final soundServiceAsync =
+                                  ref.watch(alertSoundServiceProvider);
+                              final isMuted = soundServiceAsync.when(
+                                data: (service) => service.isMuted,
+                                loading: () => false,
+                                error: (_, __) => false,
+                              );
+
+                              if (!isMuted) return const SizedBox.shrink();
+
+                              return Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Color(0xFF00AAFF).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Color(0xFF00AAFF)
+                                        .withValues(alpha: 0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.volume_off,
+                                  size: 16,
+                                  color: Color(0xFF00AAFF),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -707,6 +803,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           currentCreditsGap: latestSnapshot?.gapToRank1,
                           creditsLost: creditsLost,
                           gapAtDetection: gapAtDetection,
+                          snapshots: snapshotBuffer,
                         ),
                       ),
                     ],
@@ -1035,6 +1132,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 currentCreditsGap: latestSnapshot?.gapToRank1,
                 creditsLost: creditsLost,
                 gapAtDetection: gapAtDetection,
+                snapshots: snapshotBuffer,
               ),
 
               const SizedBox(height: 4),

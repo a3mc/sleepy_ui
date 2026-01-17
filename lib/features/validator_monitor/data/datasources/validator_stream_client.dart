@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show SocketException, HttpException;
 import 'dart:math' show min;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
@@ -8,6 +9,22 @@ import '../models/validator_snapshot.dart';
 
 // Disable verbose logging - only errors logged
 const _kEnableVerboseLogging = false;
+
+/// Classification of stream errors for user-friendly messaging
+enum StreamErrorType {
+  /// Network connectivity issues (DNS, connection refused, timeouts)
+  network,
+
+  /// Malformed data from server (invalid UTF-8, JSON errors)
+  malformedData,
+
+  /// Server returned error status (5xx codes)
+  serverError,
+
+  /// Unknown/unexpected errors
+  unknown,
+}
+
 void _log(String message) {
   if (_kEnableVerboseLogging) debugPrint(message);
 }
@@ -26,7 +43,12 @@ class ValidatorStreamClient {
       5; // Exponential backoff for first 5 attempts
   static const int _steadyStateDelaySeconds =
       8; // Fixed delay after exponential phase
+  // No max retry limit for emergency monitoring - must reconnect indefinitely
+  // Only authentication errors cause terminal failure (handled separately)
   bool _isDisposed = false;
+
+  // SSE frame buffer size limit - protects against malformed streams
+  static const int _maxSseFrameSize = 100 * 1024; // 100KB limit
 
   ValidatorStreamClient({
     http.Client? httpClient,
@@ -48,6 +70,33 @@ class ValidatorStreamClient {
     );
 
     return _controller!.stream;
+  }
+
+  /// Classify stream errors for user-friendly error messaging
+  StreamErrorType _classifyStreamError(Object error) {
+    // Network connectivity issues
+    if (error is SocketException || error is TimeoutException) {
+      return StreamErrorType.network;
+    }
+
+    // HTTP protocol errors (rare - usually handled in _attemptConnection)
+    if (error is HttpException) {
+      return StreamErrorType.serverError;
+    }
+
+    // UTF-8 decode errors from utf8.decoder transformer
+    // FormatException occurs when invalid UTF-8 bytes encountered
+    if (error is FormatException && error.toString().contains('UTF-8')) {
+      return StreamErrorType.malformedData;
+    }
+
+    // JSON parse errors (though these are caught in data handler)
+    if (error is FormatException) {
+      return StreamErrorType.malformedData;
+    }
+
+    // Unknown error type
+    return StreamErrorType.unknown;
   }
 
   Future<void> _startStream() async {
@@ -82,6 +131,7 @@ class ValidatorStreamClient {
               '[SSE] Exponential backoff: retry $_retryCount in ${delaySeconds}s');
         } else {
           // Steady state: retry every 8 seconds indefinitely
+          // Emergency monitoring must not give up during prolonged outages
           delaySeconds = _steadyStateDelaySeconds;
           _log('[SSE] Steady retry: attempt $_retryCount in ${delaySeconds}s');
         }
@@ -170,6 +220,25 @@ class ValidatorStreamClient {
           if (line.startsWith('data: ')) {
             // Extract JSON payload after "data: " prefix
             final jsonStr = line.substring(6);
+
+            // SECURITY [NULL-01]: Check buffer size before appending
+            // Protects against DoS from malformed SSE streams without empty line separators
+            final potentialSize = buffer.length + jsonStr.length;
+            if (potentialSize > _maxSseFrameSize) {
+              final preview =
+                  buffer.toString().substring(0, min(buffer.length, 200));
+              final bufferLimitKb = _maxSseFrameSize ~/ 1024;
+              _log(
+                  '[SSE] [ERROR] Frame buffer exceeded $_maxSseFrameSize bytes - malformed stream detected');
+              _log('[SSE] Buffer preview (first 200 chars): $preview...');
+              _controller?.addError(Exception(
+                  'SSE frame too large (>${bufferLimitKb}KB) - possible malformed stream or backend issue'));
+
+              // Clear buffer and skip this frame - prevents OOM
+              buffer.clear();
+              return;
+            }
+
             buffer.write(jsonStr);
           } else if (line.isEmpty && buffer.isNotEmpty) {
             // Empty line marks end of SSE event - parse and clear buffer
@@ -220,16 +289,35 @@ class ValidatorStreamClient {
           }
         },
         onError: (error) {
-          // ERR-02: Differentiate stream-level errors with structured logging
-          // UTF-8 decode errors from utf8.decoder transformer
-          // Network protocol errors from HTTP stream
-          // LineSplitter errors (unlikely - infallible transformer)
-          _log('[SSE] Stream error (type: ${error.runtimeType}): $error');
-          _controller?.addError(Exception('SSE stream error: $error'));
+          // Classify error for structured logging and user feedback
+          final errorType = _classifyStreamError(error);
+          final userMessage = switch (errorType) {
+            StreamErrorType.network => 'Network connection lost. Retrying...',
+            StreamErrorType.malformedData =>
+              'Received malformed data from server. This may indicate a backend issue.',
+            StreamErrorType.serverError =>
+              'Server error occurred. Retrying connection...',
+            StreamErrorType.unknown =>
+              'Unexpected stream error: ${error.runtimeType}',
+          };
+
+          _log('[SSE] Stream error (type: $errorType): $error');
+          _controller?.addError(Exception(userMessage));
+
+          // CRITICAL FIX [ERR-01]: Trigger reconnection immediately on ANY stream error
+          // Stream transformer errors (utf8.decoder) may not call onDone
+          // Clean up resources and initiate fresh connection attempt
+          _subscription?.cancel();
+          _subscription = null;
+          _response = null;
+
+          // Trigger retry loop with exponential backoff
+          _startStream();
         },
         onDone: () {
           _log('[SSE] Stream closed, reconnecting');
           // Don't close controller - trigger reconnection
+          // Keep as redundant safety net for graceful closures
           _startStream();
         },
         cancelOnError: false,

@@ -3,12 +3,14 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/themes/app_theme.dart';
+import '../providers/alert_sound_provider.dart';
 import '../../data/models/validator_snapshot.dart';
 import 'circular_blade_painter.dart';
 import 'event_marker_painter.dart';
 
-class CircularBladeWidget extends StatefulWidget {
+class CircularBladeWidget extends ConsumerStatefulWidget {
   final List<ValidatorSnapshot> snapshots;
   final String? rank;
   final String? alertStatus;
@@ -23,16 +25,18 @@ class CircularBladeWidget extends StatefulWidget {
   });
 
   @override
-  State<CircularBladeWidget> createState() => _CircularBladeWidgetState();
+  ConsumerState<CircularBladeWidget> createState() =>
+      _CircularBladeWidgetState();
 }
 
-class _CircularBladeWidgetState extends State<CircularBladeWidget>
+class _CircularBladeWidgetState extends ConsumerState<CircularBladeWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
   DateTime? _lastSnapshotTime;
   final ValueNotifier<double> _secondsSinceUpdate = ValueNotifier(0.0);
   Timer? _updateTimer;
+  bool _isPressed = false;
 
   @override
   void initState() {
@@ -152,7 +156,36 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
                     ],
                   ),
                 ),
-                _buildCenterInfo(context, radius),
+                GestureDetector(
+                  onTapDown: (_) => setState(() => _isPressed = true),
+                  onTapUp: (_) {
+                    setState(() => _isPressed = false);
+                    _handleMuteToggle();
+                  },
+                  onTapCancel: () => setState(() => _isPressed = false),
+                  child: AnimatedScale(
+                    scale: _isPressed ? 0.92 : 1.0,
+                    duration: const Duration(milliseconds: 100),
+                    curve: Curves.easeOut,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: _isPressed
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFF00AAFF)
+                                      .withValues(alpha: 0.5),
+                                  blurRadius: 20,
+                                  spreadRadius: 5,
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: _buildCenterInfo(context, radius),
+                    ),
+                  ),
+                ),
                 // Timer widget at bottom-right corner
                 Positioned(
                   right: 8,
@@ -165,6 +198,12 @@ class _CircularBladeWidgetState extends State<CircularBladeWidget>
         },
       ),
     );
+  }
+
+  Future<void> _handleMuteToggle() async {
+    // Read as future to get the actual service instance
+    final soundService = await ref.read(alertSoundServiceProvider.future);
+    await soundService.toggleMute();
   }
 
   String _buildSemanticDescription() {

@@ -9,6 +9,7 @@ import '../providers/endpoint_config_provider.dart';
 import '../providers/validator_providers.dart';
 import '../providers/connection_status_provider.dart';
 import '../providers/wake_lock_provider.dart';
+import '../providers/sound_settings_provider.dart';
 import '../../data/datasources/validator_api_client.dart';
 import '../widgets/about_widget.dart';
 import 'token_gate_screen.dart';
@@ -396,7 +397,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 3,
-                          child: _buildProtocolToggle(),
+                          child: _buildProtocolSelector(),
                         ),
                       ],
                     ),
@@ -560,6 +561,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
                 const SizedBox(height: 20),
 
+                // Alert sounds section
+                _buildSoundSettingsSection(),
+
+                const SizedBox(height: 20),
+
                 // Android wake lock section (conditional)
                 if (!kIsWeb && Platform.isAndroid) _buildWakeLockSection(),
 
@@ -697,88 +703,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ),
         ],
       ],
-    );
-  }
-
-  Widget _buildProtocolToggle() {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Color(0xFF0A0A0A),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: Color(0xFF00AAFF).withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: !_useHttps
-                    ? Color(0xFF00AAFF).withValues(alpha: 0.15)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: Text(
-                'HTTP',
-                style: TextStyle(
-                  color: !_useHttps ? Color(0xFF00AAFF) : Color(0xFF666666),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 9,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-          Transform.scale(
-            scale: 0.7,
-            child: Switch(
-              value: _useHttps,
-              onChanged: (value) {
-                setState(() {
-                  _useHttps = value;
-                  // Auto-set port: 443 for HTTPS, 80 for HTTP (still editable)
-                  _portController.text = value ? '443' : '80';
-                });
-              },
-              thumbColor: WidgetStateProperty.resolveWith<Color>(
-                (states) => states.contains(WidgetState.selected)
-                    ? Color(0xFF00AAFF)
-                    : Color(0xFF666666),
-              ),
-              trackColor: WidgetStateProperty.resolveWith<Color>(
-                (states) => states.contains(WidgetState.selected)
-                    ? Color(0xFF00AAFF).withValues(alpha: 0.3)
-                    : Color(0xFF666666).withValues(alpha: 0.2),
-              ),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: _useHttps
-                    ? Color(0xFF00AAFF).withValues(alpha: 0.15)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: Text(
-                'HTTPS',
-                style: TextStyle(
-                  color: _useHttps ? Color(0xFF00AAFF) : Color(0xFF666666),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 9,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -949,6 +873,299 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   ],
                 ),
               ),
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildProtocolSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'PROTOCOL',
+          style: TextStyle(
+            fontSize: 9,
+            color: Color(0xFF666666),
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 42,
+          decoration: BoxDecoration(
+            color: Color(0xFF0A0A0A),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: Color(0xFF00AAFF).withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    if (_useHttps) {
+                      setState(() {
+                        _useHttps = false;
+                        _portController.text = '80';
+                      });
+                    }
+                  },
+                  borderRadius:
+                      BorderRadius.horizontal(left: Radius.circular(3)),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: !_useHttps
+                          ? Color(0xFF00AAFF).withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius:
+                          BorderRadius.horizontal(left: Radius.circular(3)),
+                    ),
+                    child: Text(
+                      'HTTP',
+                      style: TextStyle(
+                        color:
+                            !_useHttps ? Color(0xFF00AAFF) : Color(0xFF666666),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 24,
+                color: Color(0xFF00AAFF).withValues(alpha: 0.2),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    if (!_useHttps) {
+                      setState(() {
+                        _useHttps = true;
+                        _portController.text = '443';
+                      });
+                    }
+                  },
+                  borderRadius:
+                      BorderRadius.horizontal(right: Radius.circular(3)),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _useHttps
+                          ? Color(0xFF00AAFF).withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius:
+                          BorderRadius.horizontal(right: Radius.circular(3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.lock_outline,
+                          size: 10,
+                          color:
+                              _useHttps ? Color(0xFF00AAFF) : Color(0xFF666666),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'HTTPS',
+                          style: TextStyle(
+                            color: _useHttps
+                                ? Color(0xFF00AAFF)
+                                : Color(0xFF666666),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSoundSettingsSection() {
+    return _buildSectionCard(
+      label: 'ALERT SOUNDS',
+      children: [
+        Text(
+          'Audio alerts for degradation events (beep, warning, critical, recovery)',
+          style: TextStyle(
+            fontSize: 11,
+            color: Color(0xFF666666),
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Consumer(
+          builder: (context, ref, _) {
+            final settings = ref.watch(soundSettingsProvider);
+            return Column(
+              children: [
+                InkWell(
+                  onTap: () {
+                    ref.read(soundSettingsProvider.notifier).toggle();
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF0A0A0A),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: settings.enabled
+                            ? Color(0xFF00AAFF).withValues(alpha: 0.3)
+                            : Color(0xFF666666).withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          settings.enabled ? Icons.volume_up : Icons.volume_off,
+                          size: 16,
+                          color: settings.enabled
+                              ? Color(0xFF00AAFF)
+                              : Color(0xFF666666),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ENABLE ALERT SOUNDS',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Color(0xFFCCCCCC),
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                settings.enabled
+                                    ? 'Sounds active'
+                                    : 'Sounds muted',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Color(0xFF666666),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Transform.scale(
+                          scale: 0.8,
+                          child: Switch(
+                            value: settings.enabled,
+                            onChanged: (value) {
+                              ref.read(soundSettingsProvider.notifier).toggle();
+                            },
+                            thumbColor: WidgetStateProperty.resolveWith<Color>(
+                              (states) => states.contains(WidgetState.selected)
+                                  ? Color(0xFF00AAFF)
+                                  : Color(0xFF666666),
+                            ),
+                            trackColor: WidgetStateProperty.resolveWith<Color>(
+                              (states) => states.contains(WidgetState.selected)
+                                  ? Color(0xFF00AAFF).withValues(alpha: 0.3)
+                                  : Color(0xFF666666).withValues(alpha: 0.2),
+                            ),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Volume slider
+                AnimatedOpacity(
+                  duration: Duration(milliseconds: 200),
+                  opacity: settings.enabled ? 1.0 : 0.4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF0A0A0A),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: Color(0xFF666666).withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.volume_down,
+                          size: 14,
+                          color: Color(0xFF666666),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              trackHeight: 2,
+                              thumbShape:
+                                  RoundSliderThumbShape(enabledThumbRadius: 6),
+                              overlayShape:
+                                  RoundSliderOverlayShape(overlayRadius: 12),
+                              activeTrackColor: Color(0xFF00AAFF),
+                              inactiveTrackColor:
+                                  Color(0xFF666666).withValues(alpha: 0.2),
+                              thumbColor: Color(0xFF00AAFF),
+                              overlayColor:
+                                  Color(0xFF00AAFF).withValues(alpha: 0.2),
+                            ),
+                            child: Slider(
+                              value: settings.volume,
+                              onChanged: settings.enabled
+                                  ? (value) {
+                                      ref
+                                          .read(soundSettingsProvider.notifier)
+                                          .setVolume(value);
+                                    }
+                                  : null,
+                              min: 0.0,
+                              max: 1.0,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.volume_up,
+                          size: 14,
+                          color: Color(0xFF666666),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${(settings.volume * 100).round()}%',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF666666),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),

@@ -368,25 +368,25 @@ class CircularBladePainter extends CustomPainter {
   Color _getCreditsPerformanceColor(int creditsPerformanceGap) {
     // creditsPerformanceGap = rank1_credits_delta - our_credits_delta
     // NEGATIVE values (e.g., -16) = we earn MORE than rank1 → EXCELLENT (green)
-    // ZERO = we earn SAME as rank1 → OK (blue)
-    // POSITIVE values (e.g., +10) = we earn LESS than rank1 → BAD (orange/red)
+    // ZERO = we earn SAME as rank1 → OK (green)
+    // POSITIVE values = we earn LESS than rank1 → degrading (blue/orange/red)
 
-    // Critical thresholds for performance degradation
+    // Thresholds aligned with network jitter patterns (±16, ±32)
     if (creditsPerformanceGap < 0) {
-      // We're earning ANY amount more credits than rank1 per cycle → EXCELLENT (highlight with acidic green)
-      return AppTheme.ringOverperformColor; // Acidic green - overperformance
+      // We're earning more credits than rank1 → EXCELLENT (acidic green)
+      return AppTheme.ringOverperformColor;
     } else if (creditsPerformanceGap == 0) {
-      // We're earning exactly same as rank1 → GOOD
-      return AppTheme.ringExcellentColor; // Professional green
-    } else if (creditsPerformanceGap < 10) {
-      // We're earning 1-9 fewer credits than rank1 → CAUTION (blue)
-      return AppTheme.ringGoodColor; // Blue
-    } else if (creditsPerformanceGap == 10) {
-      // We're earning exactly 10 fewer credits than rank1 → WARNING (orange)
-      return AppTheme.ringWarningColor; // Orange
+      // We're earning exactly same as rank1 → GOOD (green)
+      return AppTheme.ringExcellentColor;
+    } else if (creditsPerformanceGap <= 15) {
+      // 1-15: Minor degradation, could be jitter → CAUTION (blue)
+      return AppTheme.ringGoodColor;
+    } else if (creditsPerformanceGap <= 32) {
+      // 16-32: Moderate degradation → WARNING (orange)
+      return AppTheme.ringWarningColor;
     } else {
-      // We're earning 11+ fewer credits than rank1 → CRITICAL (red)
-      return AppTheme.ringCriticalColor; // Red
+      // 33+: Severe degradation → CRITICAL (red)
+      return AppTheme.ringCriticalColor;
     }
   }
 
@@ -412,46 +412,6 @@ class CircularBladePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(Offset(centerX, centerY), dotRadius, dotPaint);
-
-    /* X marker version - keeping code for easy rollback
-    final markerSize = (outerRadius - innerRadius) * 0.15;
-    const gapAngleRad = 0.015;
-    final gapWidth = midRadius * gapAngleRad;
-    
-    final xPaint = Paint()
-      ..color = AppTheme.backgroundDarker
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = gapWidth
-      ..strokeCap = StrokeCap.round;
-
-    final halfSize = markerSize / 2;
-    final angle45 = boundaryAngle + math.pi / 4;
-    final angle135 = boundaryAngle - math.pi / 4;
-    
-    canvas.drawLine(
-      Offset(
-        centerX + halfSize * math.cos(angle45),
-        centerY + halfSize * math.sin(angle45),
-      ),
-      Offset(
-        centerX - halfSize * math.cos(angle45),
-        centerY - halfSize * math.sin(angle45),
-      ),
-      xPaint,
-    );
-    
-    canvas.drawLine(
-      Offset(
-        centerX + halfSize * math.cos(angle135),
-        centerY + halfSize * math.sin(angle135),
-      ),
-      Offset(
-        centerX - halfSize * math.cos(angle135),
-        centerY - halfSize * math.sin(angle135),
-      ),
-      xPaint,
-    );
-    */
   }
 
   void _drawAlertMarker(

@@ -6,7 +6,7 @@ publish_to: 'none'
 # Format: MAJOR.MINOR.PATCH+BUILD
 # Android: versionName (build-name) and versionCode (build-number)
 # Linux: Used in package metadata
-version: 1.2.0+4
+version: 1.2.1+5
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -56,6 +56,9 @@ dependencies:
   
   # URL launcher
   url_launcher: ^6.3.1
+  
+  # Audio playback
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -83,6 +86,10 @@ flutter:
     - assets/icon/app_icon.png
     - assets/background_log.txt
     - assets/moon.png
+    - assets/sounds/beep.wav
+    - assets/sounds/warning.wav
+    - assets/sounds/critical.wav
+    - assets/sounds/recover.wav
 
 # Flutter launcher icons configuration
 flutter_launcher_icons:

@@ -1,3 +1,4 @@
+
 # Dart & Flutter
 .dart_tool/
 .packages
@@ -7,6 +8,7 @@
 
 # Flutter build outputs
 build/
+audit/
 ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
 *.lock
@@ -15,6 +17,7 @@ ios/Flutter/Flutter.podspec
 
 # IDE settings
 .idea/
+.vscode/
 *.iml
 
 # Android

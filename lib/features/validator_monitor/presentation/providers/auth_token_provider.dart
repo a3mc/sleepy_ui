@@ -43,8 +43,14 @@ class AuthTokenNotifier extends StateNotifier<AsyncValue<String?>> {
     if (_configFile == null || !await _configFile!.exists()) {
       return {};
     }
-    final content = await _configFile!.readAsString();
-    return jsonDecode(content) as Map<String, dynamic>;
+    try {
+      final content = await _configFile!.readAsString();
+      if (content.trim().isEmpty) return {};
+      return jsonDecode(content) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[Storage] Failed to read config: $e');
+      return {};
+    }
   }
 
   // Write config to JSON file (desktop platforms - plain text with OS permissions)

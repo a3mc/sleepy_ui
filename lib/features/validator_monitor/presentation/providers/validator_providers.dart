@@ -86,17 +86,16 @@ final validatorStatusProvider =
       _debugLog(
           '[StatusProvider] Poll failed (attempt $consecutiveErrors): $e');
 
-      // Yield error to show in UI, but continue polling for recovery
-      // Critical: addError() instead of throw - keeps stream alive
+      // FIXED [ERR-03]: Remove non-idiomatic yield* Stream.error pattern
+      // Silent error handling - continue polling for recovery
+      // UI detects stale data via timestamp comparison
       if (consecutiveErrors >= 3) {
-        _debugLog('[StatusProvider] Backend unreachable, showing error state');
-        yield* Stream.error(
-          Exception('Backend unreachable: ${e.toString()}'),
-          StackTrace.current,
-        );
+        _debugLog(
+            '[StatusProvider] Backend unreachable after 3 attempts, continuing silent polling');
       }
 
       // Continue polling - will recover when backend returns
+      // No error emission - keeps stream clean and predictable
     }
 
     await Future.delayed(ApiConstants.statusPollInterval);
@@ -465,7 +464,6 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
           _forkGapAtDetection = null;
           _debugLog(
               '[MARKER] � CYAN DOT (light blue) - [LOSS] CLEARED: ${prevFork.phase} → Idle (analysis complete: NO LOSS detected, false positive, no alert sent)');
-          debugPrint('   Loss event dot should now disappear from blade');
         } else if (fork.phase == 'RankSampling') {
           _debugLog(
               '[MARKER] [STARTED] BLUE DOT (dark blue) - [LOSS] RANK SAMPLING: ${prevFork.phase} → RankSampling (monitoring rank changes for confirmation) [loops=${fork.loopsSinceDetection}]');
@@ -597,23 +595,33 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
     }
   }
 
+  // Binary search for insertion point in timestamp-ordered list
+  /// Returns index where snapshot should be inserted to maintain chronological order
+  int _binarySearchInsertionPoint(
+      List<ValidatorSnapshot> list, ValidatorSnapshot target) {
+    int low = 0;
+    int high = list.length;
+
+    while (low < high) {
+      final mid = (low + high) ~/ 2;
+      if (list[mid].timestamp.isBefore(target.timestamp)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low;
+  }
+
   // Insert snapshot in correct position maintaining timestamp order
   void _insertSnapshotInOrder(ValidatorSnapshot snapshot) {
     final newState = [...state];
 
-    // Find insertion point (binary search would be optimal, but linear is fine for small gaps)
-    int insertIndex = newState.length;
-    for (int i = newState.length - 1; i >= 0; i--) {
-      if (newState[i].timestamp.isBefore(snapshot.timestamp)) {
-        insertIndex = i + 1;
-        break;
-      }
-      if (i == 0) {
-        insertIndex = 0;
-      }
-    }
+    // Use binary search for O(log n) insertion point lookup (improved from linear O(n))
+    final insertIndex = _binarySearchInsertionPoint(newState, snapshot);
 
-    // Check for duplicate (same sequence or timestamp)
+    // Check for duplicate at insertion point
     if (insertIndex < newState.length &&
         newState[insertIndex].sequence == snapshot.sequence) {
       debugPrint('[BACKFILL] Skipping duplicate sequence ${snapshot.sequence}');
@@ -665,13 +673,25 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
 
         if (validBackfill.isEmpty) return;
 
-        // Deduplicate: build set of existing timestamps to prevent duplicates
-        final existingTimestamps =
-            state.map((s) => s.timestamp.millisecondsSinceEpoch).toSet();
-        final uniqueBackfill = validBackfill
-            .where((snap) => !existingTimestamps
-                .contains(snap.timestamp.millisecondsSinceEpoch))
-            .toList();
+        // CORRECTNESS [DATA-01]: Deduplicate using (sessionId, sequence) tuple
+        // Prevents duplicate snapshots at same millisecond with different sequences
+        // Fallback to timestamp for backward compatibility with snapshots lacking sequence
+        final existingKeys = state.map((s) {
+          if (s.sessionId != null && s.sequence != null) {
+            // Primary key: session + sequence guarantees uniqueness
+            return '${s.sessionId}_${s.sequence}';
+          } else {
+            // Fallback for legacy snapshots without sequence numbers
+            return 'ts_${s.timestamp.millisecondsSinceEpoch}';
+          }
+        }).toSet();
+
+        final uniqueBackfill = validBackfill.where((snap) {
+          final key = (snap.sessionId != null && snap.sequence != null)
+              ? '${snap.sessionId}_${snap.sequence}'
+              : 'ts_${snap.timestamp.millisecondsSinceEpoch}';
+          return !existingKeys.contains(key);
+        }).toList();
 
         if (uniqueBackfill.isEmpty) {
           _log(

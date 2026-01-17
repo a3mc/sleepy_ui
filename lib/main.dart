@@ -32,9 +32,6 @@ void main() async {
       await windowManager.show();
       await windowManager.focus();
     });
-
-    // Enable sleep prevention for continuous monitoring
-    await sleepPreventionService.enable();
   }
 
   // Lock to portrait mode on mobile platforms

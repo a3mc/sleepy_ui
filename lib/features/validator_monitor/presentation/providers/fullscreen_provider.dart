@@ -31,7 +31,7 @@ class FullscreenNotifier extends StateNotifier<bool> {
 
       state = newState;
 
-      // Auto-enable sleep prevention in fullscreen (war room mode)
+      // Enable sleep prevention ONLY in fullscreen mode
       if (newState) {
         await sleepPreventionService.enable();
       } else {

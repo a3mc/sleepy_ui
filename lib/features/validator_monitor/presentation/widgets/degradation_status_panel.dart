@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import '../../data/models/event_metadata.dart';
+import '../../data/models/validator_snapshot.dart';
+import '../providers/alert_sound_provider.dart';
+import '../providers/sound_settings_provider.dart';
 
-class DegradationStatusPanel extends StatelessWidget {
+class DegradationStatusPanel extends ConsumerStatefulWidget {
   final EventMetadata? events;
   final int? currentCreditsGap; // Current gap to rank_1
   final int? creditsLost; // Calculated: confirmed_gap - detection_gap
   final int? gapAtDetection; // Gap when fork Stabilizing started
+  final List<ValidatorSnapshot> snapshots; // For jitter detection
 
   const DegradationStatusPanel({
     super.key,
@@ -14,11 +20,139 @@ class DegradationStatusPanel extends StatelessWidget {
     this.currentCreditsGap,
     this.creditsLost,
     this.gapAtDetection,
+    required this.snapshots,
   });
 
   @override
+  ConsumerState<DegradationStatusPanel> createState() =>
+      _DegradationStatusPanelState();
+}
+
+class _DegradationStatusPanelState
+    extends ConsumerState<DegradationStatusPanel> {
+  String? _previousLevel; // Track level changes for recovery detection
+  bool _degradationConfirmed =
+      false; // Track if we've seen 2 consecutive losses
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void didUpdateWidget(DegradationStatusPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.events != null && widget.events != oldWidget.events) {
+      unawaited(_processSoundTriggers());
+    }
+  }
+
+  Future<void> _processSoundTriggers() async {
+    try {
+      final soundService = await ref.read(alertSoundServiceProvider.future);
+      final soundEnabled = ref.read(soundEnabledProvider);
+
+      // Check if latest snapshot is part of jitter cancellation
+      final isJitter = _detectJitterCancellation();
+
+      // Use BACKEND's temporal.level - same logic as visual markers
+      final temporal = widget.events?.temporal;
+
+      // BEEP: Start after 2 consecutive Credits losses, continue until full recovery
+      if (widget.snapshots.length >= 2 && temporal != null && soundEnabled) {
+        final latest = widget.snapshots.last.creditsPerformanceGap;
+        final previous =
+            widget.snapshots[widget.snapshots.length - 2].creditsPerformanceGap;
+        final twoConsecutive = latest > 0 && previous > 0;
+        final backendTracking = temporal.credits.consecutiveCount > 0;
+
+        // Set flag when 2 consecutive confirmed
+        if (twoConsecutive) {
+          _degradationConfirmed = true;
+        }
+
+        // Reset flag when backend completes full recovery
+        if (!backendTracking) {
+          _degradationConfirmed = false;
+        }
+
+        // Beep once confirmed and backend still tracking
+        if (_degradationConfirmed && backendTracking && !isJitter) {
+          await soundService.playBeep();
+        }
+      }
+
+      if (temporal != null) {
+        final currentLevel = temporal.level;
+
+        // ORANGE LINE (Warning alert sent): Warning→None (recovered before critical)
+        if (currentLevel == 'None' && _previousLevel == 'Warning') {
+          debugPrint(
+              '[DegradationPanel] ORANGE LINE: Playing WARNING (recovered before critical)');
+          await soundService.playWarning();
+        }
+        // RED LINE (Critical alert sent): any→Critical (escalated)
+        else if (currentLevel == 'Critical' && _previousLevel != 'Critical') {
+          debugPrint(
+              '[DegradationPanel] RED LINE: Playing CRITICAL (escalated)');
+          await soundService.playCritical();
+        }
+        // GREEN DOT (Recovery from critical): Critical→None
+        else if (currentLevel == 'None' && _previousLevel == 'Critical') {
+          debugPrint(
+              '[DegradationPanel] GREEN DOT: Playing RECOVERY (recovered from critical)');
+          await soundService.playRecovery();
+        }
+
+        _previousLevel = currentLevel;
+      }
+    } catch (e) {
+      debugPrint('[DegradationStatusPanel] Sound trigger error: $e');
+    }
+  }
+
+  /// Detect if current snapshot is part of a jitter cancellation pattern
+  /// Uses EXACT same logic as circular_blade_painter.dart "holes drilling"
+  /// Returns true if latest snapshot is in a grayed (canceled) segment
+  bool _detectJitterCancellation() {
+    if (widget.snapshots.length < 2) return false;
+
+    // Check last ~10 snapshots for cancellation pairs (same as visual buffer)
+    final checkCount = widget.snapshots.length.clamp(2, 10);
+    final startIdx = widget.snapshots.length - checkCount;
+
+    // Find all grayed segments (EXACT painter logic from circular_blade_painter.dart:184-188)
+    final grayedIndices = <int>{};
+    for (int i = 0; i < checkCount - 1; i++) {
+      final currentIdx = startIdx + i;
+      final nextIdx = startIdx + i + 1;
+
+      final currentGap = widget.snapshots[currentIdx].creditsPerformanceGap;
+      final nextGap = widget.snapshots[nextIdx].creditsPerformanceGap;
+
+      // Zero tolerance: exact cancellation only, exclude (0,0) pairs
+      if (currentGap + nextGap == 0 && currentGap != 0) {
+        grayedIndices.add(currentIdx);
+        grayedIndices.add(nextIdx);
+      }
+    }
+
+    // Check if latest snapshot (last index) is grayed
+    final latestIdx = widget.snapshots.length - 1;
+    final isGrayed = grayedIndices.contains(latestIdx);
+
+    if (isGrayed) {
+      final latest = widget.snapshots[latestIdx].creditsPerformanceGap;
+      debugPrint(
+          '[DegradationPanel] JITTER SUPPRESSION: latest snapshot (gap=$latest) is in grayed segment');
+    }
+
+    return isGrayed;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (events == null) return const SizedBox.shrink();
+    if (widget.events == null) return const SizedBox.shrink();
 
     final activeDetections = _getAllDetections();
 
@@ -120,8 +254,8 @@ class DegradationStatusPanel extends StatelessWidget {
     }
 
     // Add reset threshold to title when available
-    final resetInfo = events != null
-        ? ' • Reset: ${events!.temporal.counterResetThreshold}'
+    final resetInfo = widget.events != null
+        ? ' • Reset: ${widget.events!.temporal.counterResetThreshold}'
         : '';
 
     return Row(
@@ -293,17 +427,17 @@ class DegradationStatusPanel extends StatelessWidget {
   List<_Detection> _getAllDetections() {
     final detections = <_Detection>[];
 
-    final vote = events!.temporal.voteDistance;
-    final root = events!.temporal.rootDistance;
-    final credits = events!.temporal.credits;
+    final vote = widget.events!.temporal.voteDistance;
+    final root = widget.events!.temporal.rootDistance;
+    final credits = widget.events!.temporal.credits;
 
     detections.add(_Detection(
       label: 'Vote',
       count: vote.consecutiveCount,
       warningThreshold: vote.warningThreshold,
       criticalThreshold: vote.criticalThreshold,
-      level: events!.temporal.level,
-      resetThreshold: events!.temporal.counterResetThreshold,
+      level: widget.events!.temporal.level,
+      resetThreshold: widget.events!.temporal.counterResetThreshold,
       isActive: vote.degraded,
     ));
 
@@ -312,8 +446,8 @@ class DegradationStatusPanel extends StatelessWidget {
       count: root.consecutiveCount,
       warningThreshold: root.warningThreshold,
       criticalThreshold: root.criticalThreshold,
-      level: events!.temporal.level,
-      resetThreshold: events!.temporal.counterResetThreshold,
+      level: widget.events!.temporal.level,
+      resetThreshold: widget.events!.temporal.counterResetThreshold,
       isActive: root.degraded,
     ));
 
@@ -322,23 +456,24 @@ class DegradationStatusPanel extends StatelessWidget {
       count: credits.consecutiveCount,
       warningThreshold: credits.warningThreshold,
       criticalThreshold: credits.criticalThreshold,
-      level: events!.temporal.level,
-      resetThreshold: events!.temporal.counterResetThreshold,
+      level: widget.events!.temporal.level,
+      resetThreshold: widget.events!.temporal.counterResetThreshold,
       isActive: credits.degraded,
     ));
 
-    if (events!.delinquent.isDetecting || events!.delinquent.isActive) {
+    if (widget.events!.delinquent.isDetecting ||
+        widget.events!.delinquent.isActive) {
       detections.add(_Detection.validatorAlert(
         label: 'Entity Inactive',
-        alert: events!.delinquent,
+        alert: widget.events!.delinquent,
       ));
     }
 
-    if (events!.creditsStagnant.isDetecting ||
-        events!.creditsStagnant.isActive) {
+    if (widget.events!.creditsStagnant.isDetecting ||
+        widget.events!.creditsStagnant.isActive) {
       detections.add(_Detection.validatorAlert(
         label: 'V Halt',
-        alert: events!.creditsStagnant,
+        alert: widget.events!.creditsStagnant,
       ));
     } else {
       // Show as healthy when not detecting
@@ -347,10 +482,11 @@ class DegradationStatusPanel extends StatelessWidget {
       ));
     }
 
-    if (events!.networkHalted.isDetecting || events!.networkHalted.isActive) {
+    if (widget.events!.networkHalted.isDetecting ||
+        widget.events!.networkHalted.isActive) {
       detections.add(_Detection.validatorAlert(
         label: 'N Halt',
-        alert: events!.networkHalted,
+        alert: widget.events!.networkHalted,
       ));
     } else {
       // Show as healthy when not detecting
@@ -418,13 +554,16 @@ class _Detection {
   _Detection.validatorAlert({
     required this.label,
     required AlertPhaseInfo alert,
-  })  : color = const Color(0xFFFF6600),
+  })  : color =
+            alert.isActive ? const Color(0xFFFF6600) : const Color(0xFFFFAA00),
         progress = alert.count / alert.threshold,
         statusText = '${alert.count}/${alert.threshold} cycles',
-        subtitle = 'Confirming before alert',
-        severity = 2,
+        subtitle = alert.isActive
+            ? 'Alert confirmed and active'
+            : 'Confirming before alert',
+        severity = alert.isActive ? 2 : 1,
         thresholdMarkers = null,
-        isActive = true,
+        isActive = alert.isDetecting || alert.isActive,
         resetThreshold = 0;
 
   // Placeholder for always-visible but inactive alerts
@@ -469,9 +608,10 @@ class _Detection {
   }
 
   static int _getTemporalSeverity(int count, int warning, int critical) {
-    if (count >= critical) return 3;
-    if (count >= warning) return 2;
-    return 0; // Healthy state
+    if (count >= critical) return 3; // Critical
+    if (count >= warning) return 2; // Warning
+    if (count > 0) return 1; // Accumulating (for beep sounds)
+    return 0; // Healthy
   }
 }
 
