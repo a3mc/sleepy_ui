@@ -33,7 +33,9 @@ class _CircularBladeWidgetState extends ConsumerState<CircularBladeWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  DateTime? _lastSnapshotTime;
+  String? _lastSeenSessionId; // Track session ID for restart detection
+  int? _lastSeenSequence; // Track sequence number of last seen snapshot
+  DateTime? _lastUpdateTime; // Local time when we saw that snapshot
   final ValueNotifier<double> _secondsSinceUpdate = ValueNotifier(0.0);
   Timer? _updateTimer;
   bool _isPressed = false;
@@ -55,10 +57,9 @@ class _CircularBladeWidgetState extends ConsumerState<CircularBladeWidget>
 
     // Update timer every 100ms - smooth for user, 2x better than original 50ms
     _updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (_lastSnapshotTime != null) {
+      if (_lastUpdateTime != null) {
         _secondsSinceUpdate.value =
-            DateTime.now().difference(_lastSnapshotTime!).inMilliseconds /
-                1000.0;
+            DateTime.now().difference(_lastUpdateTime!).inMilliseconds / 1000.0;
       }
     });
   }
@@ -71,12 +72,26 @@ class _CircularBladeWidgetState extends ConsumerState<CircularBladeWidget>
       _controller.forward(from: 0.7);
     }
 
-    // Check if we have a new snapshot by comparing timestamps
+    // Detect new snapshot by (sessionId, sequence) tuple - handles backend restart
     if (widget.snapshots.isNotEmpty) {
-      final currentTime = widget.snapshots.last.timestamp;
-      if (_lastSnapshotTime != currentTime) {
-        _lastSnapshotTime = currentTime;
-        _secondsSinceUpdate.value = 0; // Reset counter
+      final latestSnapshot = widget.snapshots.last;
+      final latestSessionId = latestSnapshot.sessionId;
+      final latestSequence = latestSnapshot.sequence;
+
+      // Check if we have a new snapshot
+      // - Session changed (backend restart) OR
+      // - Sequence changed (new snapshot) OR
+      // - First snapshot (both null)
+      if (latestSessionId != null && latestSequence != null) {
+        final sessionChanged = latestSessionId != _lastSeenSessionId;
+        final sequenceChanged = latestSequence != _lastSeenSequence;
+
+        if (sessionChanged || sequenceChanged) {
+          _lastSeenSessionId = latestSessionId;
+          _lastSeenSequence = latestSequence;
+          _lastUpdateTime = DateTime.now();
+          _secondsSinceUpdate.value = 0;
+        }
       }
     }
   }
