@@ -6,7 +6,7 @@ publish_to: 'none'
 # Format: MAJOR.MINOR.PATCH+BUILD
 # Android: versionName (build-name) and versionCode (build-number)
 # Linux: Used in package metadata
-version: 1.2.1+5
+version: 1.2.2+6
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
