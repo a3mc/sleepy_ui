@@ -305,10 +305,6 @@ class NetworkGapsChart extends ConsumerWidget {
     // Calculate Y axis bounds
     final allGaps = dataPoints.map((s) => s.gapToRank1.abs()).toList();
 
-    if (allGaps.every((g) => g == 0)) {
-      return _buildEmptyState();
-    }
-
     final minGap = allGaps.reduce((a, b) => a < b ? a : b).toDouble();
     final maxGap = allGaps.reduce((a, b) => a > b ? a : b).toDouble();
 
@@ -472,15 +468,6 @@ class NetworkGapsChart extends ConsumerWidget {
 
                             // Show dots for all points in cypherblade mode
                             if (selectedRange == ChartTimeRange.cypherblade) {
-                              if (spot.y == 0) {
-                                return FlDotCirclePainter(
-                                  radius: 2.5,
-                                  color: AppTheme.goldColor,
-                                  strokeWidth: 1.2,
-                                  strokeColor:
-                                      AppTheme.goldColor.withValues(alpha: 0.5),
-                                );
-                              }
                               return FlDotCirclePainter(
                                 radius: 1.5,
                                 color: lineColor,
@@ -584,6 +571,22 @@ class NetworkGapsChart extends ConsumerWidget {
                     ),
                   ),
                 ), // Close LineChart
+                // Big number overlay showing current gap
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${dataPoints.last.gapToRank1.abs()}',
+                      style: TextStyle(
+                        fontSize: 120,
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.backgroundElevated.withValues(alpha: 0.5),
+                        height: 1,
+                        letterSpacing: -4,
+                      ),
+                    ),
+                  ),
+                ),
                 if (!compactMode)
                   Positioned(
                     top: 8,
