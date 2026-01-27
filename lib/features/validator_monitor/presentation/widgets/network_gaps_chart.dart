@@ -580,7 +580,8 @@ class NetworkGapsChart extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: 120,
                         fontWeight: FontWeight.w900,
-                        color: AppTheme.backgroundElevated.withValues(alpha: 0.5),
+                        color:
+                            AppTheme.backgroundElevated.withValues(alpha: 0.5),
                         height: 1,
                         letterSpacing: -4,
                       ),
