@@ -241,7 +241,7 @@ class _MockBufferNotifier extends SnapshotBufferNotifier {
 
   // Override checkForGaps to prevent timer-based gap detection in tests
   @override
-  void checkForGaps() {
+  Future<void> checkForGaps() async {
     // No-op for tests
   }
 }

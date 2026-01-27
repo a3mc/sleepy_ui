@@ -12,6 +12,14 @@ import 'auth_token_provider.dart';
 import 'endpoint_config_provider.dart';
 import 'fork_history_provider.dart';
 
+// Backfill health status for UI feedback
+enum BackfillHealthStatus {
+  healthy, // All backfill operations successful
+  degraded, // Some failures, still attempting
+  circuitOpen, // Circuit breaker open, paused for cooldown
+  recovering, // Attempting recovery after cooldown
+}
+
 // Disable verbose logging - only errors logged
 const _kEnableVerboseLogging = false;
 void _log(String message) {
@@ -127,6 +135,19 @@ final snapshotBufferProvider =
   return SnapshotBufferNotifier(ref);
 });
 
+// Provider to expose backfill health status for UI feedback
+final backfillHealthProvider = Provider<BackfillHealthStatus>((ref) {
+  // Watch the notifier to rebuild when internal state changes
+  ref.watch(snapshotBufferProvider);
+  return ref.read(snapshotBufferProvider.notifier).backfillHealthStatus;
+});
+
+// Provider to expose backfill status message for UI display
+final backfillStatusMessageProvider = Provider<String>((ref) {
+  ref.watch(snapshotBufferProvider);
+  return ref.read(snapshotBufferProvider.notifier).backfillStatusMessage;
+});
+
 class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
   final Ref _ref;
   Timer? _gapCheckTimer;
@@ -136,6 +157,13 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
   String? _lastSessionId;
   int? _lastSequence;
   bool _backfillInProgress = false;
+  bool _gapCheckInProgress = false;
+
+  // Circuit breaker for backfill operations
+  int _consecutiveBackfillFailures = 0;
+  DateTime? _lastBackfillFailureTime;
+  static const int _maxBackfillFailures = 3;
+  static const Duration _backfillCooldown = Duration(minutes: 2);
 
   SnapshotBufferNotifier(this._ref) : super([]) {
     _initializeBuffer();
@@ -268,11 +296,34 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
         debugPrint(
             '[GAP] [WARN] Detected gap of $gapSize events: sequences $gapStart to $gapEnd');
 
-        // Trigger backfill asynchronously (don't block snapshot processing)
-        if (!_backfillInProgress) {
-          _triggerBackfill(gapStart, gapEnd);
+        // PERFORMANCE: Validate gap size before triggering backfill
+        if (gapSize > 1000) {
+          // Gap too large - skip backfill to prevent resource exhaustion
+          debugPrint(
+              '[GAP] Gap exceeds maximum threshold (1000 events), skipping backfill to prevent overload');
+          debugPrint(
+              '[GAP] Data will be incomplete - consider manual recovery or backend investigation');
+          // Update sequence tracking to prevent repeated warnings
+          _lastSequence = snapshot.sequence;
+        } else if (gapSize > 100) {
+          // Medium gap - rate limit to prevent burst load
+          debugPrint(
+              '[GAP] Medium gap detected, scheduling backfill with 5s delay');
+          Future.delayed(const Duration(seconds: 5), () {
+            if (!_backfillInProgress) {
+              _triggerBackfill(gapStart, gapEnd);
+            } else {
+              debugPrint(
+                  '[GAP] Backfill started by another operation, skipping');
+            }
+          });
         } else {
-          debugPrint('[GAP] Backfill already in progress, skipping');
+          // Small gap - trigger backfill immediately
+          if (!_backfillInProgress) {
+            _triggerBackfill(gapStart, gapEnd);
+          } else {
+            debugPrint('[GAP] Backfill already in progress, skipping');
+          }
         }
       }
 
@@ -291,10 +342,22 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
       newState = List.of(state)..add(snapshot);
     }
 
-    // Log event state transitions for debugging
+    // PERFORMANCE: Update state IMMEDIATELY, then log asynchronously
+    // This ensures Riverpod notifications aren't blocked by console I/O
+    final prevSnapshot = state.isNotEmpty ? state.last : null;
+    state = newState;
+
+    // Schedule logging asynchronously to avoid blocking state propagation
+    if (snapshot.events != null && kDebugMode) {
+      Future.microtask(() => _logEventTransitions(snapshot, prevSnapshot));
+    }
+  }
+
+  // Log event state transitions for debugging (runs asynchronously)
+  void _logEventTransitions(
+      ValidatorSnapshot snapshot, ValidatorSnapshot? prevSnapshot) {
     if (snapshot.events != null) {
       final events = snapshot.events!;
-      final prevSnapshot = state.isNotEmpty ? state.last : null;
       final prevEvents = prevSnapshot?.events;
 
       // Log temporal transitions WITH DETAILED EXPLANATIONS
@@ -534,13 +597,47 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
         }
       }
     }
-
-    // State already trimmed during construction above
-    state = newState;
   }
 
   // Expose loss event gap tracking data
   int? get forkGapAtDetection => _forkGapAtDetection;
+
+  // Expose backfill health status for UI feedback
+  BackfillHealthStatus get backfillHealthStatus {
+    if (_consecutiveBackfillFailures == 0) {
+      return BackfillHealthStatus.healthy;
+    } else if (_consecutiveBackfillFailures < _maxBackfillFailures) {
+      return BackfillHealthStatus.degraded;
+    } else {
+      final timeSinceFailure = _lastBackfillFailureTime != null
+          ? DateTime.now().difference(_lastBackfillFailureTime!)
+          : Duration.zero;
+
+      if (timeSinceFailure < _backfillCooldown) {
+        return BackfillHealthStatus.circuitOpen;
+      } else {
+        return BackfillHealthStatus.recovering;
+      }
+    }
+  }
+
+  // Get human-readable backfill status message for UI
+  String get backfillStatusMessage {
+    switch (backfillHealthStatus) {
+      case BackfillHealthStatus.healthy:
+        return 'Data recovery operational';
+      case BackfillHealthStatus.degraded:
+        return 'Intermittent data recovery issues ($_consecutiveBackfillFailures failures)';
+      case BackfillHealthStatus.circuitOpen:
+        final remaining = _lastBackfillFailureTime != null
+            ? _backfillCooldown -
+                DateTime.now().difference(_lastBackfillFailureTime!)
+            : Duration.zero;
+        return 'Data recovery paused (retry in ${remaining.inSeconds}s)';
+      case BackfillHealthStatus.recovering:
+        return 'Attempting data recovery...';
+    }
+  }
 
   // Calculate credits lost (only valid when loss confirmed)
   int? getCreditsLost() {
@@ -554,6 +651,24 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
 
   // Trigger backfill from /missed endpoint
   Future<void> _triggerBackfill(int fromSeq, int toSeq) async {
+    // Circuit breaker: skip if too many consecutive failures
+    if (_consecutiveBackfillFailures >= _maxBackfillFailures &&
+        _lastBackfillFailureTime != null) {
+      final timeSinceLastFailure =
+          DateTime.now().difference(_lastBackfillFailureTime!);
+
+      if (timeSinceLastFailure < _backfillCooldown) {
+        final remainingCooldown = _backfillCooldown - timeSinceLastFailure;
+        debugPrint(
+            '[BACKFILL] Circuit breaker OPEN - skipping backfill (cooldown: ${remainingCooldown.inSeconds}s remaining)');
+        return;
+      } else {
+        // Cooldown expired - allow one retry attempt (half-open state)
+        debugPrint(
+            '[BACKFILL] Circuit breaker HALF-OPEN - attempting recovery');
+      }
+    }
+
     _backfillInProgress = true;
 
     try {
@@ -578,20 +693,92 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
         _insertSnapshotInOrder(snapshot);
       }
 
+      // Success - reset circuit breaker
+      _consecutiveBackfillFailures = 0;
+      _lastBackfillFailureTime = null;
+
       debugPrint('[BACKFILL] ✓ Successfully recovered gap');
     } on TimeoutException catch (e) {
-      debugPrint('[BACKFILL] Timeout fetching missed events: $e');
+      _consecutiveBackfillFailures++;
+      _lastBackfillFailureTime = DateTime.now();
+      debugPrint(
+          '[BACKFILL] Timeout fetching missed events (failure $_consecutiveBackfillFailures/$_maxBackfillFailures): $e');
     } catch (e) {
-      debugPrint('[BACKFILL] Failed to recover gap: $e');
+      _consecutiveBackfillFailures++;
+      _lastBackfillFailureTime = DateTime.now();
+      debugPrint(
+          '[BACKFILL] Failed to recover gap (failure $_consecutiveBackfillFailures/$_maxBackfillFailures): $e');
 
-      // If /missed fails (e.g., 410 Gone), fallback to /history
-      if (e.toString().contains('no longer available')) {
+      // If /missed fails with 410 Gone (cache eviction), fallback to /history
+      if (e.toString().contains('no longer available') ||
+          e.toString().contains('410')) {
         debugPrint(
-            '[BACKFILL] Events evicted from cache, falling back to /history');
-        // Could implement /history fallback here if needed
+            '[BACKFILL] Events evicted from cache, attempting /history fallback');
+        await _fallbackToHistoryBackfill(fromSeq, toSeq);
       }
     } finally {
       _backfillInProgress = false;
+    }
+  }
+
+  // Fallback to /history endpoint when /missed cache is evicted
+  Future<void> _fallbackToHistoryBackfill(int fromSeq, int toSeq) async {
+    try {
+      // Heuristic: estimate timestamp range from sequence numbers
+      // Assumption: ~1 snapshot per second (average)
+      final gapSize = toSeq - fromSeq;
+      final now = DateTime.now();
+      final estimatedStartTime =
+          now.subtract(Duration(seconds: gapSize + 60)); // Add 60s buffer
+
+      final startTs = estimatedStartTime.millisecondsSinceEpoch ~/ 1000;
+      final endTs = now.millisecondsSinceEpoch ~/ 1000;
+
+      debugPrint(
+          '[BACKFILL_HISTORY] Fetching range $startTs-$endTs for sequences $fromSeq-$toSeq');
+
+      final client = _ref.read(validatorApiClientProvider);
+      final historySnapshots = await client
+          .getHistory(
+            startTimestamp: startTs,
+            endTimestamp: endTs,
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (historySnapshots.isEmpty) {
+        debugPrint('[BACKFILL_HISTORY] No events returned');
+        return;
+      }
+
+      // Filter to only snapshots in the sequence range we care about
+      final relevantSnapshots = historySnapshots.where((snap) {
+        if (snap.sequence == null) return false;
+        return snap.sequence! >= fromSeq && snap.sequence! <= toSeq;
+      }).toList();
+
+      if (relevantSnapshots.isEmpty) {
+        debugPrint(
+            '[BACKFILL_HISTORY] No snapshots in sequence range $fromSeq-$toSeq');
+        return;
+      }
+
+      debugPrint(
+          '[BACKFILL_HISTORY] Recovered ${relevantSnapshots.length} events from history');
+
+      // Insert snapshots in order
+      for (final snapshot in relevantSnapshots) {
+        _insertSnapshotInOrder(snapshot);
+      }
+
+      // Success - reset circuit breaker
+      _consecutiveBackfillFailures = 0;
+      _lastBackfillFailureTime = null;
+
+      debugPrint(
+          '[BACKFILL_HISTORY] ✓ Successfully recovered gap via /history');
+    } catch (e) {
+      debugPrint('[BACKFILL_HISTORY] Fallback failed: $e');
+      // Failure already counted in parent method, don't double-count
     }
   }
 
@@ -639,18 +826,32 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
   }
 
   // Check for timestamp gap and backfill if needed
-  void checkForGaps() async {
+  Future<void> checkForGaps() async {
+    // Concurrency guard: prevent multiple gap checks from running simultaneously
+    if (_gapCheckInProgress) {
+      _log('[SnapshotBuffer] Gap check already in progress, skipping');
+      return;
+    }
+
+    // Also skip if backfill from sequence gap is in progress
+    // Prevents race condition between /history and /missed endpoints
+    if (_backfillInProgress) {
+      _log('[SnapshotBuffer] Backfill in progress, skipping gap check');
+      return;
+    }
+
     if (state.isEmpty) return;
 
-    final now = DateTime.now();
-    final lastSnapshot = state.last;
-    final gap = now.difference(lastSnapshot.timestamp);
+    _gapCheckInProgress = true;
 
-    if (gap > ApiConstants.gapBackfillThreshold) {
-      final startTs = lastSnapshot.timestamp.millisecondsSinceEpoch ~/ 1000;
-      final endTs = now.millisecondsSinceEpoch ~/ 1000;
+    try {
+      final now = DateTime.now();
+      final lastSnapshot = state.last;
+      final gap = now.difference(lastSnapshot.timestamp);
 
-      try {
+      if (gap > ApiConstants.gapBackfillThreshold) {
+        final startTs = lastSnapshot.timestamp.millisecondsSinceEpoch ~/ 1000;
+        final endTs = now.millisecondsSinceEpoch ~/ 1000;
         final client = _ref.read(validatorApiClientProvider);
         final backfill = await client
             .getHistory(
@@ -703,7 +904,30 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
         _log(
             '[SnapshotBuffer] Backfilling ${uniqueBackfill.length} snapshots for gap of ${gap.inSeconds}s (filtered from ${backfill.length} total)');
 
-        final merged = [...state, ...uniqueBackfill];
+        // DEFENSIVE: Re-check for duplicates immediately before merge
+        // (Defense-in-depth even though ASYNC-01/03 prevent concurrent operations)
+        final freshExistingKeys = state.map((s) {
+          if (s.sessionId != null && s.sequence != null) {
+            return '${s.sessionId}_${s.sequence}';
+          } else {
+            return 'ts_${s.timestamp.millisecondsSinceEpoch}';
+          }
+        }).toSet();
+
+        final finalUniqueBackfill = uniqueBackfill.where((snap) {
+          final key = (snap.sessionId != null && snap.sequence != null)
+              ? '${snap.sessionId}_${snap.sequence}'
+              : 'ts_${snap.timestamp.millisecondsSinceEpoch}';
+          return !freshExistingKeys.contains(key);
+        }).toList();
+
+        if (finalUniqueBackfill.isEmpty) {
+          _log(
+              '[SnapshotBuffer] All backfill snapshots became duplicates, skipping merge');
+          return;
+        }
+
+        final merged = [...state, ...finalUniqueBackfill];
 
         // Sort by timestamp to maintain chronological order
         merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -717,14 +941,14 @@ class SnapshotBufferNotifier extends StateNotifier<List<ValidatorSnapshot>> {
 
         _log(
             '[SnapshotBuffer] Backfill complete, buffer now has ${state.length} snapshots');
-      } on TimeoutException {
-        _log(
-            '[SnapshotBuffer] Backfill timeout after 10s for gap ${gap.inSeconds}s (range $startTs-$endTs). Will retry on next check cycle.');
-        // Gap remains unfilled; timer will retry in 30 seconds
-      } catch (e) {
-        _log('[SnapshotBuffer] Backfill failed: $e');
-        // Backfill failed, continue with gap
       }
+    } on TimeoutException {
+      _log(
+          '[SnapshotBuffer] Gap check timeout after 10s. Will retry on next check cycle.');
+    } catch (e) {
+      _log('[SnapshotBuffer] Gap check failed: $e');
+    } finally {
+      _gapCheckInProgress = false;
     }
   }
 }
